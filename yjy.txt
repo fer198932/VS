@@ -3,3 +3,5 @@ git add README.md
 git commit -m "first commit"
 git remote add origin https://github.com/fer198932/test.git
 git push -u origin master
+
+OK!
