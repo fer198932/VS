@@ -9,6 +9,7 @@
 #include "coder.h"
 #include <vector>
 #include <sstream> //多定义的类型则用于读写存储在内存中的string对象
+#include <Windows.h>
 
 using namespace std;
 
@@ -19,14 +20,37 @@ void writeCSV(const string file, vector<vector<DataSeted>> *pVecDataArray, unsig
 void makeDataGroups(const string data, DataGroups * dataGroups, unsigned int dataNum);
 void display1(vector<vector<DataSeted>> *pDataSeted, unsigned int dataNum);		// 显示用
 
+bool isNumber(const char *str);				// 判断字符串是否是数字
+void ifPush2VecData(vector<vector<string>> *pVecDataArray, unsigned char push2VecFlag[], unsigned int timeAxisNum);
+void setCoderDataNum(unsigned char* push2VecFlag);			// 设定iDataNum是否增加的函数
+
+// 获得编码器输出在指定位置的值
+unsigned char getCoderDataOfNAxis(vector<vector<string>> *pVecDataArray, unsigned int iPos);
+// 指定位置的数据压入容器
+void push2VecData(vector<CoderData> *nAxisCoderData, unsigned char push2VecFlag[], unsigned int iDataNum);
+// 编码器字符串转化为数字
+void makeCoderData2Digital(vector<vector<string>> *pVecDataArray, 
+	vector<CoderData2Digital> *pCoderData2Digital);
+
+// 字符串按二进制读入
+unsigned char string2Bin(const string str);
+
 // 对编码器输出的数据进行滤波的，可以让threshold_us=25（25us的毛刺滤掉）
-void filterCoderData(vector<vector<string>> *pVecDataArray, float threshold_us);	
+void filterCoderData(vector<CoderData2Digital> *pVecDataArray, float threshold_us);
+
+// 对编码器数据进行分组
+void makeCoderData2Group(vector<CoderData2Digital> *pCoderData2Digital, vector<CoderData> *pCoderDataGrouped);
 
 int main()
 {
 	const string testFile = "H:\\work\\projects\\STM32\\OIMRobot-400F407-3_20181119_Coder_Young\\Feedback_information.txt";
 	const string file = "H:\\work\\projects\\VS\\Coder\\coder\\resouce\\DataSeted.txt";		// 设定参数
-	const string fileCSV = "H:\\work\\projects\\VS\\Coder\\coder\\resouce\\Time_RS.csv";		// 实测数据
+	// 实测数据路径
+	const string fileCSV_Test = "H:\\work\\projects\\VS\\Coder\\coder\\resouce\\Time_RS.csv";
+	const string fileCSV[3] = { "H:\\work\\projects\\VS\\Coder\\coder\\resouce\\Time_RS_X.csv",
+								"H:\\work\\projects\\VS\\Coder\\coder\\resouce\\Time_RS_Y.csv",
+								"H:\\work\\projects\\VS\\Coder\\coder\\resouce\\Time_RS_Z.csv" };
+		
 
 	string sDataFile;
 	sDataFile = readTxt(testFile);
@@ -38,6 +62,8 @@ int main()
 		return 0;
 	}
 	dataNum = ((sDataFile.size() - 1) / 3 + 1) / 90;	// 有多少组数据
+	cout << "设置参数部分：" << endl;
+	cout << "共有" << dataNum << "组数据！！！" << endl;
 
 	DataGroups *dataGroups = new DataGroups[dataNum];	// 注意后面要释放
 	makeDataGroups(sDataFile, dataGroups, dataNum);
@@ -59,33 +85,166 @@ int main()
 	}
 	delete[] dataGroups;							// 没用了，释放掉
 
+
 	writeCSV(file, &dataSeted, dataNum);			// 将设定的参数写入CSV文件
 
-	display1(&dataSeted, dataNum);
+//	display1(&dataSeted, dataNum);
 	cout << endl;
 
 
 
 
 
+	cout << "/////////////////////////////////////////////////////////////////" << endl << endl;;
+	cout << "实测部分：" << endl;
 
-	// csv文件操作，实测部分
-	vector<vector<string>> vecDataArray;	// 保存CSV数据的结构
-	readCSV(fileCSV, &vecDataArray);
-//	filterCoderData(&vecDataArray, 1000);			// 对编码器输出的数据进行软件滤波,25us的波去掉
-//	writeCSV(fileCSV, &vecDataArray);
+	for (size_t i = 0; i < 1/*3*/; i++)		// 循环三次，分别处理X、Y、Z轴的数据
+	{
+		// csv文件操作，实测部分
+		vector<vector<string>> vecDataArray;	// 保存CSV数据的结构
+		readCSV(fileCSV_Test, &vecDataArray);
+
+		// string 转化为 digital
+		vector<CoderData2Digital> coderData2Digital;
+		makeCoderData2Digital(&vecDataArray, &coderData2Digital);
+
+		// 对编码器输出的数据进行软件滤波,小于20us的波去掉；先关闭滤波
+//		filterCoderData(&coderData2Digital, PULES_WIDTH_THRESHOLD);	
+	//	writeCSV(fileCSV, &vecDataArray);
+
+		// 对数据进行分组
+		vector<CoderData> coderDataGrouped;		// 数据分组
+		makeCoderData2Group(&coderData2Digital, &coderDataGrouped);
+
+
+
+
+	}
+	
 
 
 
 
 
+	////  删掉vecDataArray负数和非数字的字符串
+	//unsigned int iCursor = 0;
+	//while ( !isNumber(vecDataArray[iCursor][0].c_str()) || '-' == vecDataArray[iCursor][0][0] )
+	//	iCursor++;
+	//vecDataArray.erase(vecDataArray.begin(), vecDataArray.begin() + iCursor);
+
+	//vector<CoderData> nAxisCoderData[3];			// x、y、z轴的实测数据
+	//vector<float> vTimeAxis;						// 时间轴的容器，保存了所有的时间点
+
+	//// 是否压入容器的标记：0b0000，
+	//// 前两位：10-A相压入解锁；01-B相压入解锁；11-都解锁，可以压入
+	//// 后两位：1-数据可写入，0-数据不能写入
+
+	//unsigned char push2VecFlag[] = {0, 0, 0};
+	//unsigned int iDataNum[] = {0, 0, 0};				// 用来表示有多少组数据，X、Y、Z轴
+
+	//// 数据压入容器
+	//float fTimeDataTemp = (float)atof(vecDataArray[0][0].c_str());	// 0点的数据作为参考
+	//vTimeAxis.push_back(fTimeDataTemp);
+	//for (size_t i = 1; i < 50/*vecDataArray.size()-1*/; i++)
+	//{
+	//	fTimeDataTemp = (float)atof(vecDataArray[i][0].c_str());
+	//	vTimeAxis.push_back(fTimeDataTemp);
+
+	//	// 标志复位
+	//	for (size_t i = 0; i < 3; i++)
+	//		push2VecFlag[i] = 0;
+	//	// 检查该时间点的数据是否可以压入 nAxisCoderData
+	//	ifPush2VecData(&vecDataArray, push2VecFlag, i);
+	//	// 设置iDataNum
+	//	setCoderDataNum(push2VecFlag);
+	//	// 数据写入
+	//	push2VecData(nAxisCoderData, push2VecFlag, iDataNum);
+
+	//	
+
+
+	//	cout << vTimeAxis[i] << endl;
+	//}
 
 
 
-//	cout << x << endl;
-//	cout << dataNum << endl;
+	
 
 	return 0;
+}
+
+// 对编码器数据进行分组
+void makeCoderData2Group(vector<CoderData2Digital> *pCoderData2Digital, vector<CoderData> *pCoderDataGrouped)
+{
+	unsigned int dataOfDigital = pCoderData2Digital->size();
+	unsigned int iDataNum = 0;		// 分成多少组
+
+	vector<CoderData2Digital>::iterator iterDig = pCoderData2Digital->begin();
+
+	while ( iterDig <= pCoderData2Digital->end() )
+	{
+
+
+		iterDig++;
+	}
+
+}
+
+// 字符串按二进制读入
+unsigned char string2Bin(const string str)
+{
+	unsigned char temp = 0b0;	
+	for (size_t i = 0; i < str.size(); i++)
+	{
+		if ('1' == str[i])
+		{
+			temp |= (0b1 << (str.size() - i - 1));
+		}
+		else if ('0' == str[i])
+		{
+
+		}
+		else
+		{
+			cout << "二进制数据有误！" << endl;
+			temp = 0b10000000;
+			break;
+		}
+	}
+
+
+	return temp;
+}
+
+// 编码器字符串转化为数字
+void makeCoderData2Digital(vector<vector<string>> *pVecDataArray,
+	vector<CoderData2Digital> *pCoderData2Digital)
+{
+	//  删掉vecDataArray负数和非数字的字符串
+	unsigned int iCursor = 0;
+	while ( !isNumber((*pVecDataArray)[iCursor][0].c_str()) || '-' == (*pVecDataArray)[iCursor][0][0] )
+		iCursor++;
+	(*pVecDataArray).erase((*pVecDataArray).begin(), (*pVecDataArray).begin() + iCursor);
+
+	// 数据转换
+	CoderData2Digital data2DigTemp;
+	for (size_t i = 0; i < pVecDataArray->size(); i++)
+	{
+		data2DigTemp.timeAxis = (float)atof((*pVecDataArray)[i][0].c_str());
+		data2DigTemp.nAxisValue = getCoderDataOfNAxis(pVecDataArray, i);
+		pCoderData2Digital->push_back(data2DigTemp);
+
+		/*cout << (*pCoderData2Digital)[i].timeAxis << ":";
+		cout << (int)(*pCoderData2Digital)[i].nAxisValue << endl;*/
+	}
+}
+
+// 判断字符串是否是数字
+bool isNumber(const char *str)				
+{
+	float f;
+	int n = sscanf_s(str, "%f", &f);
+	return n != 0;
 }
 
 // 读取txt文件的函数
@@ -124,13 +283,13 @@ void readCSV(const string file, vector<vector<string>> *pVecDataArray)
 	}
 	infile.close();
 
-	/* //输出结果
-	for (size_t i = 0; i<(*pVecDataArray).size(); i++)
-	{
-		for (size_t j = 0; j<(*pVecDataArray)[i].size(); j++)
-			cout << (*pVecDataArray)[i][j] << "  ";
-		cout << endl;
-	} */
+	 //输出结果
+	//for (size_t i = /*(*pVecDataArray).size()*/0; i<50; i++)
+	//{
+	//	for (size_t j = 0; j<(*pVecDataArray)[i].size(); j++)
+	//		cout << (*pVecDataArray)[i][j] << "  ";
+	//	cout << endl;
+	//} 
 }
 
 // 将设定参数解析为字符串进行输出 rs:第一级转速，lastTime：最后运行的时间，
@@ -235,7 +394,7 @@ string dataProc2outFile(vector<vector<DataSeted>> *pVecDataArray, unsigned int i
 	}	
 
 	// 中间段
-	timeNum += ((*pVecDataArray)[0][iDataNum].getConstTime()-1);
+	timeNum += ((*pVecDataArray)[0][iDataNum].getConstTime()-1);	// 这里没有问题，三个轴的ConstTime是一样的
 
 	// 下降段
 	for (size_t i = length; i > 0; i--)					// 上升段
@@ -284,17 +443,35 @@ void writeCSV(const string file, vector<vector<DataSeted>> *pVecDataArray, unsig
 	// 将设定参数解析后写入容器
 	unsigned int timeNum = 0;			// 时间轴，重要
 	vector<string> vecSetDataArray;
+	DataSeted* pMaxSetedData;				// 定义最大的参数，作为计算标准
 	for (size_t i = 0; i < dataNum; i++)
 	{
+		// 对每组的 DataSeted 数据进行预处理后才能写入CSV文件
+		for (size_t j = 0; j < 3; j++)							// 检查三个轴的数据是否规范
+			if ( !((*pVecDataArray)[j][i].checkSetedData()) )
+			{
+				cout << "第" << i + 1 << "组数据有误，请检查！" << endl;
+				return;
+			}
+		pMaxSetedData = getMaxSetedData(&(*pVecDataArray)[0][i], 
+			&(*pVecDataArray)[1][i], &(*pVecDataArray)[2][i]);
+
 		// 计算拐点数
 		unsigned char inflectionPoint = 0;
 		for (size_t j = 0; j < 8; j++)
 		{
-			if (0 == (*pVecDataArray)[0][i].addSubClkSet[j])
+			if (0 == (*pMaxSetedData).addSubClkSet[j])
 				break;
 			else
 				inflectionPoint++;
 		}
+		if (0 == inflectionPoint || 32/4 < inflectionPoint)	// 拐点数/4 必须在(0,8]之间
+		{
+			cout << "第" << i+1 << "组拐点数量计算有误" << endl;
+			outFile.close();
+			return;
+		}
+
 		inflectionPoint *= 4;
 
 		// 初级转速
@@ -303,7 +480,7 @@ void writeCSV(const string file, vector<vector<DataSeted>> *pVecDataArray, unsig
 			rsTemp[j] = (*pVecDataArray)[j][i].setedClk2RS(0);
 		// 最后一步的持续时间
 		float lastTime;
-		lastTime = (*pVecDataArray)[0][i].calSubLastTime();
+		lastTime = (*pMaxSetedData).calSubLastTime();		
 
 		// 每组数据解析后放入文件流
 		string strTemp;
@@ -321,95 +498,8 @@ void writeCSV(const string file, vector<vector<DataSeted>> *pVecDataArray, unsig
 
 		// 留一段时间轴空白
 		strTemp = dataProc2outFile(timeNum, 30);
-		outFile << strTemp;
-
-		//// 手动设定开始的两个点(结构体设定得不太好。。。)
-		//strTemp = to_string(SETED_DATA_PER_TIME * timeNum);			
-		//strTemp += ",";
-		//strTemp += to_string(0);										// x轴的转速
-		//strTemp += ",";
-		//strTemp += to_string(0);										// y轴的转速
-		//strTemp += ",";
-		//strTemp += to_string(0);										// z轴的转速
-		//outFile << strTemp << endl;
-
-		//strTemp = to_string(SETED_DATA_PER_TIME * timeNum++);			// 时间轴递增
-		//strTemp += ",";
-		//rsTemp = (*pVecDataArray)[0][i].setedClk2RS(0);					// x轴的转速
-		//strTemp += to_string(rsTemp);
-		//strTemp += ",";
-		//rsTemp = (*pVecDataArray)[1][i].setedClk2RS(0);					// y轴的转速
-		//strTemp += to_string(rsTemp);
-		//strTemp += ",";
-		//rsTemp = (*pVecDataArray)[2][i].setedClk2RS(0);					// z轴的转速
-		//strTemp += to_string(rsTemp);
-		//outFile << strTemp << endl;
-
-		//for (size_t j = 0; j < (inflectionPoint-4)/4; j++)				// 注意拐点的算法
-		//{
-		//	strTemp = to_string(SETED_DATA_PER_TIME * timeNum);
-		//	strTemp += ",";
-		//	rsTemp = (*pVecDataArray)[0][i].setedClk2RS(j + 1);
-		//	strTemp += to_string(rsTemp);
-		//	strTemp += ",";
-		//	rsTemp = (*pVecDataArray)[1][i].setedClk2RS(j + 1);
-		//	strTemp += to_string(rsTemp);
-		//	strTemp += ",";
-		//	rsTemp = (*pVecDataArray)[2][i].setedClk2RS(j + 1);
-		//	strTemp += to_string(rsTemp);
-		//	outFile << strTemp << endl;
-
-		//	strTemp = to_string(SETED_DATA_PER_TIME * timeNum++);
-		//	strTemp += ",";
-		//	rsTemp = (*pVecDataArray)[0][i].setedClk2RS(j + 1);
-		//	strTemp += to_string(rsTemp);
-		//	strTemp += ",";
-		//	rsTemp = (*pVecDataArray)[1][i].setedClk2RS(j + 1);
-		//	strTemp += to_string(rsTemp);
-		//	strTemp += ",";
-		//	rsTemp = (*pVecDataArray)[2][i].setedClk2RS(j + 1);
-		//	strTemp += to_string(rsTemp);
-		//	outFile << strTemp << endl;
-		//}
-		//
-		//// 最后两个点
-		//strTemp = to_string((*pVecDataArray)[0][i].calSubLastTime() + SETED_DATA_PER_TIME * timeNum);
-		//strTemp += ",";
-		//rsTemp = (*pVecDataArray)[0][i].setedClk2RS(0);					// x轴的转速
-		//strTemp += to_string(rsTemp);
-		//strTemp += ",";
-		//rsTemp = (*pVecDataArray)[1][i].setedClk2RS(0);					// y轴的转速
-		//strTemp += to_string(rsTemp);
-		//strTemp += ",";
-		//rsTemp = (*pVecDataArray)[2][i].setedClk2RS(0);					// z轴的转速
-		//strTemp += to_string(rsTemp);
-		//outFile << strTemp << endl;
-
-		//strTemp = to_string((*pVecDataArray)[0][i].calSubLastTime() + 
-		//	SETED_DATA_PER_TIME * timeNum++);	// 时间轴递增
-		//strTemp += ",";
-		//strTemp += to_string(0);										// x轴的转速
-		//strTemp += ",";
-		//strTemp += to_string(0);										// y轴的转速
-		//strTemp += ",";
-		//strTemp += to_string(0);										// z轴的转速
-		//outFile << strTemp << endl;
-
-		//// 时间轴之间的空格，便于观察
-		//for (size_t k = 0; k < 10; k++)
-		//{
-		//	strTemp = to_string(SETED_DATA_PER_TIME * timeNum++);			// 时间轴递增
-		//	strTemp += ",";
-		//	strTemp += to_string(0);										// x轴的转速
-		//	strTemp += ",";
-		//	strTemp += to_string(0);										// y轴的转速
-		//	strTemp += ",";
-		//	strTemp += to_string(0);										// z轴的转速
-		//	outFile << strTemp << endl;
-		//}		
+		outFile << strTemp;	
 	}
-
-
 
 	outFile.close();
 }
@@ -425,7 +515,7 @@ void writeCSV(const string file, const vector<vector<string>> *pVecDataArray)
 	assert(outFile.is_open());		// 打开失败
 
 	const size_t row = (*pVecDataArray).size();
-	const size_t clo = (*pVecDataArray)[0].size();
+	const size_t clo = (*pVecDataArray)[0].size();		// 这里可能有问题，先不改 byYJY
 
 	size_t i, j;
 	for (i = 0; i < row; i++)
@@ -472,41 +562,144 @@ void display1(vector<vector<DataSeted>> *pDataSeted, unsigned int dataNum)
 }
 
 // 对编码器输出的数据进行滤波的，可以让threshold_us=25（25us的毛刺滤掉）
-void filterCoderData(vector<vector<string>> *pVecDataArray, float threshold_us)	
+void filterCoderData(vector<CoderData2Digital> *pVecDataArray, float threshold_us)
 {
-	// 删除不符合要求的元素，如字符		
-	vector<vector<string>>::iterator cursor = pVecDataArray->begin();
-	unsigned int iter = 0;
-	pVecDataArray->erase(pVecDataArray->begin() + iter); // 第一行是字符，删掉
-	cursor = pVecDataArray->begin();
-
+	cout << "滤波前数据量:" << pVecDataArray->size() << endl;
 	// 开始滤波
-	cout << "正在滤波，等待时间可能有点长...";
-	while (cursor < (pVecDataArray->end()-2)) // iter != 20  != (pVecDataArray->end())
+	cout << "正在滤波...";
+	vector<CoderData2Digital>::iterator iter = pVecDataArray->begin();
+	unsigned int cursor = 0;
+
+	while ( iter < (pVecDataArray->end()-1) )
 	{
-		double str2FlTemp1, str2FlTemp2;
-		str2FlTemp1 = atof((*pVecDataArray)[iter][0].c_str()) * 1e6;	// 要先将string转为char*,再转为us
-		str2FlTemp2 = atof((*pVecDataArray)[iter+2][0].c_str()) * 1e6;
-		
-		if (str2FlTemp1 < 0 || (str2FlTemp2 - str2FlTemp1) < threshold_us)
+		float timeAxisTemp = (float)(((*pVecDataArray)[cursor + 1].timeAxis -
+			(*pVecDataArray)[cursor].timeAxis ) * 1e6);	// 转为us，方便比较--- 小心越界 byYJY
+
+		if ( threshold_us > timeAxisTemp )					// 数据脉宽小于阈值
 		{
-			pVecDataArray->erase(cursor, cursor+1);	// vector删除的时候耗费资源很多，如果滤波时间较大，时间会很久
+			pVecDataArray->erase(iter, iter+1);		// vector删除的时候耗费资源很多，如果滤波时间较大，时间会很久
 			cout << ".";
 		}
-		else {
-			iter+=2;		// 观察数据，按2递增
+		else
+		{
+			cursor += 2;			// 观察数据，按2递增
 		}
-//		cout << str2FlTemp1 << endl;
-		cursor = pVecDataArray->begin() + iter;
+		iter = pVecDataArray->begin() + cursor;
+	}
+	cout << endl;
+	cout << "滤波后数据量还有： " << pVecDataArray->size() << endl;
+}
+
+//void filterCoderData(vector<vector<string>> *pVecDataArray, float threshold_us)	
+//{
+//	// 删除不符合要求的元素，如字符		
+//	vector<vector<string>>::iterator cursor = pVecDataArray->begin();
+//	unsigned int iter = 0;
+//	pVecDataArray->erase(pVecDataArray->begin() + iter); // 第一行是字符，删掉
+//	cursor = pVecDataArray->begin();
+//
+//	// 开始滤波
+//	cout << "正在滤波，等待时间可能有点长...";
+//	while (cursor < (pVecDataArray->end()-2)) // iter != 20  != (pVecDataArray->end())
+//	{
+//		double str2FlTemp1, str2FlTemp2;
+//		str2FlTemp1 = atof((*pVecDataArray)[iter][0].c_str()) * 1e6;	// 要先将string转为char*,再转为us
+//		str2FlTemp2 = atof((*pVecDataArray)[iter+2][0].c_str()) * 1e6;
+//		
+//		if (str2FlTemp1 < 0 || (str2FlTemp2 - str2FlTemp1) < threshold_us)
+//		{
+//			pVecDataArray->erase(cursor, cursor+1);	// vector删除的时候耗费资源很多，如果滤波时间较大，时间会很久
+//			cout << ".";
+//		}
+//		else {
+//			iter+=2;		// 观察数据，按2递增
+//		}
+////		cout << str2FlTemp1 << endl;
+//		cursor = pVecDataArray->begin() + iter;
+//	}
+//
+//	//输出结果
+//	//for (size_t i = 0; i<(*pVecDataArray).size(); i++)
+//	//{
+//	//	for (size_t j = 0; j<(*pVecDataArray)[i].size(); j++)
+//	//		cout << (*pVecDataArray)[i][j] << "----";
+//	//	cout << endl;
+//	//}
+//}
+
+// 获得编码器输出在指定位置的值
+unsigned char getCoderDataOfNAxis(vector<vector<string>> *pVecDataArray, unsigned int iPos)
+{
+	unsigned char nAxisValue = 0b10000000;
+	if (iPos < 0 || iPos >= pVecDataArray->size())
+	{
+		cout << "获得编码器数据时，位置超出范围，请检查！" << endl;
+		return nAxisValue;
 	}
 
-	//输出结果
-	//for (size_t i = 0; i<(*pVecDataArray).size(); i++)
-	//{
-	//	for (size_t j = 0; j<(*pVecDataArray)[i].size(); j++)
-	//		cout << (*pVecDataArray)[i][j] << "----";
-	//	cout << endl;
-	//}
+	string strTemp = "";
+	for (size_t i = 1; i < (*pVecDataArray)[iPos].size(); i++)
+			strTemp += (*pVecDataArray)[iPos][i][1];			// 第0个是空格
+	//while (6 != strTemp.size())		// 3轴，每轴A、B相，共6个
+	//	strTemp += "0";
+	
+	nAxisValue = string2Bin(strTemp);
+
+	return nAxisValue;
 }
+
+// 判断实测数据是否可以压入容器的函数，重要！
+void ifPush2VecData(vector<vector<string>> *pVecDataArray,
+	unsigned char push2VecFlag[], unsigned int timeAxisNum)
+{
+	unsigned char prevValues = getCoderDataOfNAxis(pVecDataArray, timeAxisNum - 1);	//  获得前一个数据
+	unsigned char curValues = getCoderDataOfNAxis(pVecDataArray, timeAxisNum);		// 获得当前数据
+	unsigned char nextValues = getCoderDataOfNAxis(pVecDataArray, timeAxisNum + 1);	// 获得后一个数据
+
+	unsigned char judgeTemp = 0;
+
+	judgeTemp = curValues ^ prevValues;
+	switch (judgeTemp)
+	{
+	case 0b100000:		// Xa 有资格
+
+		break;
+	case 0b010000:
+
+		break;
+
+		///////////还有其它情况的判断  byYJY
+
+	default:
+		break;
+	}
+
+	if (curValues ^ prevValues)		// 得出有跳变的位置
+	{
+
+	}
+
+}
+
+// 指定位置的数据压入容器
+void push2VecData(vector<CoderData> *nAxisCoderData, unsigned char push2VecFlag[], unsigned int iDataNum[])
+{
+
+	switch (1)
+	{
+	////////////后面的还要写///////// byYJY
+
+	default:
+		break;
+	}
+
+	
+}
+
+void setCoderDataNum(unsigned char* push2VecFlag)			// 设定iDataNum是否增加的函数
+{
+
+}
+
 
 
