@@ -10,11 +10,21 @@ using namespace std;
 #define N_AXIS_SIZE_STRING 90			// 读入字符串后增加3倍
 #define SETED_DATA_PER_TIME	40e-3		// 设定值的时间轴按40ms为单位
 #define DUTY_RATIO_THRESHOLD 0.05		// 占空比阈值，小于该值的考虑丢掉
-#define PULES_WIDTH_THRESHOLD 20e-6		// 脉冲宽度，单位秒，小于该宽度的认为是噪声。已知100kHz时，噪声基本上为10us
+#define PULES_WIDTH_THRESHOLD 25		// 脉冲宽度，单位us，小于该宽度的认为是噪声。已知100kHz时，噪声基本上为10us
 #define GROUPED_TIME 1					// 分组的判断参数，单位为秒
 
 bool str_to_hex(const char *string, unsigned int* result, unsigned int len);
 void str2strTemp(const char *data, char* dataTemp, unsigned char cursor);
+
+// 彻底释放vector占用的内存的模板函数
+template<typename T>
+void releaseVec(T *pVec)
+{
+	T v;
+	pVec->clear();
+	pVec->swap(v);
+//	cout << "vector内存释放成功" << endl;
+}
 
 class DataGroups
 {
@@ -272,37 +282,46 @@ void str2strTemp(const char *data, char* dataTemp, unsigned char cursor)
 	}
 }
 
+// 保存编码器某一轴某一相数据的结构体
+typedef struct
+{
+	unsigned char start;		// 起始位：0或者1
+	vector<int> timeIndex;		// 时间轴的索引
+	// 结构体注意初始化
+} NAxisPhase;
+
 // 实测数据的类
 class CoderData
 {
 public:
 	CoderData();
 	~CoderData();
-	void setData(unsigned int xa, unsigned int xb);
-
+	void setTimeAxis(vector<float> *pTimeAxis);
+	friend void makeCoderData2Group(vector<float> *pTimeAxis, 
+		NAxisPhase nAxisPhaseTotal[],	CoderData *pCoderDataGrouped);
+	friend void display2(CoderData *pCoderData, unsigned int length);
 private:
-	// 实测的X轴数据，a相、b相；保存的是时间轴的索引
-	vector<int> nAxis_A;
-	vector<int> nAxis_B;
-	unsigned int iDataNum;		// 第几组数据
+	vector<float> timeAxis;		// 时间轴的数据
+	vector<NAxisPhase> nAxisValue[6];		// X、Y、Z轴A、B相
 };
 
 CoderData::CoderData()
 {
-	iDataNum = 0;				// 0表示该组数据还未初始化赋值
+	NAxisPhase temp;
+	// 初始化
+	for (size_t i = 0; i < 6; i++)	// 2相3轴
+	{
+		nAxisValue[i].push_back(temp);
+	}
 }
 
 CoderData::~CoderData()
 {
 }
 
-// A、B相数据写入
-void CoderData::setData(unsigned int xa, unsigned int xb)
+void CoderData::setTimeAxis(vector<float> *pTimeAxis)
 {
-	if (0 != xa)
-		nAxis_A.push_back(xa);
-	if (0 != xb)
-		nAxis_B.push_back(xb);
+	timeAxis = *pTimeAxis;
 }
 
 // 保存编码器string格式转化为的数字格式
@@ -311,3 +330,4 @@ typedef struct
 	float timeAxis;				// 时间轴
 	unsigned char nAxisValue;	// 各轴的值
 } CoderData2Digital;
+

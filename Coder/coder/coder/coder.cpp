@@ -19,6 +19,7 @@ void writeCSV(const string file,const vector<vector<string>> *pVecDataArray);
 void writeCSV(const string file, vector<vector<DataSeted>> *pVecDataArray, unsigned int dataNum);
 void makeDataGroups(const string data, DataGroups * dataGroups, unsigned int dataNum);
 void display1(vector<vector<DataSeted>> *pDataSeted, unsigned int dataNum);		// 显示用
+void display2(CoderData *pCoderData, unsigned int length);		// 显示用
 
 bool isNumber(const char *str);				// 判断字符串是否是数字
 void ifPush2VecData(vector<vector<string>> *pVecDataArray, unsigned char push2VecFlag[], unsigned int timeAxisNum);
@@ -32,14 +33,19 @@ void push2VecData(vector<CoderData> *nAxisCoderData, unsigned char push2VecFlag[
 void makeCoderData2Digital(vector<vector<string>> *pVecDataArray, 
 	vector<CoderData2Digital> *pCoderData2Digital);
 
+// 编码器数据按轴分类
+void getDataOfNaxisTotal(vector<CoderData2Digital> *pCoderData2Digital, 
+	vector<float> *pTimeAxis, NAxisPhase pAxisPhaseTotal[]);
+
 // 字符串按二进制读入
 unsigned char string2Bin(const string str);
 
 // 对编码器输出的数据进行滤波的，可以让threshold_us=25（25us的毛刺滤掉）
-void filterCoderData(vector<CoderData2Digital> *pVecDataArray, float threshold_us);
+void filterCoderData(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[], float threshold_us);
 
 // 对编码器数据进行分组
-void makeCoderData2Group(vector<CoderData2Digital> *pCoderData2Digital, vector<CoderData> *pCoderDataGrouped);
+void makeCoderData2Group(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[], 
+	CoderData *pCoderDataGrouped);
 
 int main()
 {
@@ -92,79 +98,36 @@ int main()
 	cout << endl;
 
 
-
-
-
 	cout << "/////////////////////////////////////////////////////////////////" << endl << endl;;
 	cout << "实测部分：" << endl;
 
-	for (size_t i = 0; i < 1/*3*/; i++)		// 循环三次，分别处理X、Y、Z轴的数据
-	{
-		// csv文件操作，实测部分
-		vector<vector<string>> vecDataArray;	// 保存CSV数据的结构
-		readCSV(fileCSV_Test, &vecDataArray);
+	// csv文件操作，实测部分
+	vector<vector<string>> vecDataArray;	// 保存CSV数据的结构
+	readCSV(fileCSV_Test, &vecDataArray);
+	cout << "共有数据：" << vecDataArray.size() << endl << endl;
 
-		// string 转化为 digital
-		vector<CoderData2Digital> coderData2Digital;
-		makeCoderData2Digital(&vecDataArray, &coderData2Digital);
+	// string 转化为 digital
+	vector<CoderData2Digital> coderData2Digital;
+	makeCoderData2Digital(&vecDataArray, &coderData2Digital);
+	releaseVec<vector<vector<string>>>(&vecDataArray);			// 释放 vecDataArray 的空间
 
-		// 对编码器输出的数据进行软件滤波,小于20us的波去掉；先关闭滤波
-//		filterCoderData(&coderData2Digital, PULES_WIDTH_THRESHOLD);	
-	//	writeCSV(fileCSV, &vecDataArray);
+	// 数据按轴分开
+	vector<float> timeAxis;		// 时间轴的数据
+	NAxisPhase nAxisPhaseTotal[6];	//  存放各轴的数据
+	getDataOfNaxisTotal(&coderData2Digital, &timeAxis, nAxisPhaseTotal);
+	releaseVec<vector<CoderData2Digital>>(&coderData2Digital);	// 释放 coderData2Digital 的空间
 
-		// 对数据进行分组
-		vector<CoderData> coderDataGrouped;		// 数据分组
-		makeCoderData2Group(&coderData2Digital, &coderDataGrouped);
+	// 各轴滤波
+	filterCoderData(&timeAxis, nAxisPhaseTotal, (float)PULES_WIDTH_THRESHOLD);
 
+	// 对数据进行分组
+	CoderData coderData;		// 数据分组
+	makeCoderData2Group(&timeAxis, nAxisPhaseTotal, &coderData);
+	releaseVec<vector<float>>(&timeAxis);
+	// 释放 nAxisPhaseTotal 的内存，  还没写
+	display2(&coderData, 6);
+		
 
-
-
-	}
-	
-
-
-
-
-
-	////  删掉vecDataArray负数和非数字的字符串
-	//unsigned int iCursor = 0;
-	//while ( !isNumber(vecDataArray[iCursor][0].c_str()) || '-' == vecDataArray[iCursor][0][0] )
-	//	iCursor++;
-	//vecDataArray.erase(vecDataArray.begin(), vecDataArray.begin() + iCursor);
-
-	//vector<CoderData> nAxisCoderData[3];			// x、y、z轴的实测数据
-	//vector<float> vTimeAxis;						// 时间轴的容器，保存了所有的时间点
-
-	//// 是否压入容器的标记：0b0000，
-	//// 前两位：10-A相压入解锁；01-B相压入解锁；11-都解锁，可以压入
-	//// 后两位：1-数据可写入，0-数据不能写入
-
-	//unsigned char push2VecFlag[] = {0, 0, 0};
-	//unsigned int iDataNum[] = {0, 0, 0};				// 用来表示有多少组数据，X、Y、Z轴
-
-	//// 数据压入容器
-	//float fTimeDataTemp = (float)atof(vecDataArray[0][0].c_str());	// 0点的数据作为参考
-	//vTimeAxis.push_back(fTimeDataTemp);
-	//for (size_t i = 1; i < 50/*vecDataArray.size()-1*/; i++)
-	//{
-	//	fTimeDataTemp = (float)atof(vecDataArray[i][0].c_str());
-	//	vTimeAxis.push_back(fTimeDataTemp);
-
-	//	// 标志复位
-	//	for (size_t i = 0; i < 3; i++)
-	//		push2VecFlag[i] = 0;
-	//	// 检查该时间点的数据是否可以压入 nAxisCoderData
-	//	ifPush2VecData(&vecDataArray, push2VecFlag, i);
-	//	// 设置iDataNum
-	//	setCoderDataNum(push2VecFlag);
-	//	// 数据写入
-	//	push2VecData(nAxisCoderData, push2VecFlag, iDataNum);
-
-	//	
-
-
-	//	cout << vTimeAxis[i] << endl;
-	//}
 
 
 
@@ -173,21 +136,167 @@ int main()
 	return 0;
 }
 
-// 对编码器数据进行分组
-void makeCoderData2Group(vector<CoderData2Digital> *pCoderData2Digital, vector<CoderData> *pCoderDataGrouped)
+// 显示数据
+void display2(CoderData *pCoderData, unsigned int length)
 {
-	unsigned int dataOfDigital = pCoderData2Digital->size();
-	unsigned int iDataNum = 0;		// 分成多少组
-
-	vector<CoderData2Digital>::iterator iterDig = pCoderData2Digital->begin();
-
-	while ( iterDig <= pCoderData2Digital->end() )
+	cout << endl << "/////////////////////////////////////////" << endl;
+	for (size_t i = 0; i < length; i++)
 	{
+		unsigned int size = (*pCoderData).nAxisValue[i].size();
+		if (0 == size)
+		{
+			continue;
+		}
+		cout << "第" << i + 1 << "轴数据：" << endl;		
+		for (size_t j = 0; j < size; j++)
+		{
+			unsigned int sizeVec = (*pCoderData).nAxisValue[i][j].timeIndex.size();
+			cout << "第" << j << "组数据" << endl;
+			for (size_t k = 0; k < sizeVec; k++)
+			{
+				cout << (*pCoderData).timeAxis[(*pCoderData).nAxisValue[i][j].timeIndex[k]] << "--";
+			}
+			cout << endl;
+		}
+	}
+}
 
+// 获得一个二进制数在某一位的值
+inline unsigned char getBinValue(const unsigned char value, unsigned int iPos)
+{
+	unsigned char result;
+	result = (value & (0b1 << (iPos - 1))) >> (iPos - 1);
+	return result;
+}
 
-		iterDig++;
+// 编码器数据按轴分类
+void getDataOfNaxisTotal(vector<CoderData2Digital> *pCoderData2Digital,
+	vector<float> *pTimeAxis, NAxisPhase pAxisPhaseTotal[])
+{
+	unsigned int size = pCoderData2Digital->size();
+	// 初始化开始值
+	pTimeAxis->push_back((*pCoderData2Digital)[0].timeAxis);
+	for (size_t i = 0; i < 6; i++)			// 2相3轴，6个数据
+	{
+		pAxisPhaseTotal[i].start = getBinValue((*pCoderData2Digital)[0].nAxisValue, (6 - i));
+	}		
+
+	for (size_t i = 1; i < size; i++)
+	{
+		pTimeAxis->push_back((*pCoderData2Digital)[i].timeAxis);
+		
+		for (size_t j = 0; j < 6; j++)		// 2相3轴，6个数据
+		{
+			unsigned char preValue = getBinValue((*pCoderData2Digital)[i-1].nAxisValue, (6-j));
+			unsigned char curValue = getBinValue((*pCoderData2Digital)[i].nAxisValue, (6 - j));
+			if (preValue != curValue)
+			{
+				pAxisPhaseTotal[j].timeIndex.push_back(i);
+			}
+		}		
+	}
+}
+
+// 手动对vector进行赋值,目标容器会先被释放内存
+void assignVec(vector<int> *pDest, vector<int> *pSrc, unsigned int start, unsigned int end)
+{
+	unsigned int size = pSrc->size();
+	if ( (start > end) || ((end - start) > size) )
+	{
+		cout << "VECTOR赋值有误，请检查！" << endl;
+	}
+	else
+	{
+		releaseVec(pDest);
+		for (size_t i = start; i < end; i++)
+		{
+			pDest->push_back((*pSrc)[i]);
+		}
+	}
+}
+
+// 对编码器数据进行分组
+void makeCoderData2Group(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[], 
+	CoderData *pCoderDataGrouped)
+{
+	cout << "开始分组：" << endl;
+	pCoderDataGrouped->setTimeAxis(pTimeAxis);
+	unsigned int sizeOfTime = (*pCoderDataGrouped).timeAxis.size();
+	
+	for (size_t i = 0; i < 6; i++)		// 2相3轴 
+	{
+		unsigned int size = nAxisPhaseTotal[i].timeIndex.size();		
+		if (10 > size)										// 如果数据小于一定量，可以直接删除
+		{
+			releaseVec<vector<int>>(&(nAxisPhaseTotal[i].timeIndex));
+			continue;
+		}
+		cout << "第" << i + 1 << "轴数据的原始尺寸为：" << size << endl;
+
+		unsigned int iDataNum = 0;
+		unsigned int cursor = 0;
+		NAxisPhase nAxisPhaseTemp;
+		for (size_t j = 0; j < size-1; j++)
+		{
+			nAxisPhaseTemp.timeIndex.push_back(nAxisPhaseTotal[i].timeIndex[j]);
+			float timeAxisTemp = (*pTimeAxis)[nAxisPhaseTotal[i].timeIndex[j + 1]] -
+				(*pTimeAxis)[nAxisPhaseTotal[i].timeIndex[j]];
+			if (GROUPED_TIME < timeAxisTemp)
+			{
+				// 先判断长度是否合适
+				cursor = nAxisPhaseTemp.timeIndex.size();
+				if (5 > cursor)		// 数据太少不记入
+				{
+					cout << "第" << iDataNum+1 << "组的数据太少，请检查！" << endl;
+					releaseVec(&(nAxisPhaseTemp.timeIndex));	// 释放掉
+//					iDataNum++;
+					continue;
+				}			
+
+				if ((cursor % 2) == 0)			// 偶数，start相等
+					nAxisPhaseTemp.start = nAxisPhaseTotal[i].start;
+				else
+					nAxisPhaseTemp.start = ~nAxisPhaseTotal[i].start;
+				// 压入容器
+				(*pCoderDataGrouped).nAxisValue[i].push_back(nAxisPhaseTemp);
+				releaseVec(&(nAxisPhaseTemp.timeIndex));
+
+				iDataNum++;
+			}
+
+		}
+
+		// 最后一组数据写入
+		// 先判断长度是否合适
+		cursor = nAxisPhaseTemp.timeIndex.size();
+		if (5 > cursor)		// 数据太少不记入
+		{
+			cout << "第" << iDataNum + 1 << "组的数据太少，请检查！" << endl;
+			releaseVec(&(nAxisPhaseTemp.timeIndex));	// 释放掉
+			//iDataNum++;
+			continue;
+		}
+
+		if ((cursor % 2) == 0)			// 偶数，start相等
+			nAxisPhaseTemp.start = nAxisPhaseTotal[i].start;
+		else
+			nAxisPhaseTemp.start = ~nAxisPhaseTotal[i].start;
+		// 压入容器
+		(*pCoderDataGrouped).nAxisValue[i].push_back(nAxisPhaseTemp);
+		releaseVec(&(nAxisPhaseTemp.timeIndex));
+
+		iDataNum++;
+
+		cout << "分成了" << iDataNum << "组!" << endl;
+		cout << endl;
 	}
 
+	// 打印
+//	for (size_t i = 0; i < 50/*sizeOfTime*/; i++)
+//	{
+////		cout << (*pCoderDataGrouped).timeAxis[i] << endl;
+//		cout << pCoderDataGrouped->nAxisValue[0][0].timeIndex[i] << endl;
+//	}
 }
 
 // 字符串按二进制读入
@@ -562,70 +671,46 @@ void display1(vector<vector<DataSeted>> *pDataSeted, unsigned int dataNum)
 }
 
 // 对编码器输出的数据进行滤波的，可以让threshold_us=25（25us的毛刺滤掉）
-void filterCoderData(vector<CoderData2Digital> *pVecDataArray, float threshold_us)
+// 滤波不能处理最后两个数据，回头再修改 byYJY
+void filterCoderData(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[], float threshold_us)
 {
-	cout << "滤波前数据量:" << pVecDataArray->size() << endl;
-	// 开始滤波
-	cout << "正在滤波...";
-	vector<CoderData2Digital>::iterator iter = pVecDataArray->begin();
-	unsigned int cursor = 0;
-
-	while ( iter < (pVecDataArray->end()-1) )
+	for (size_t i = 0; i < 6; i++)	// 2相3轴
 	{
-		float timeAxisTemp = (float)(((*pVecDataArray)[cursor + 1].timeAxis -
-			(*pVecDataArray)[cursor].timeAxis ) * 1e6);	// 转为us，方便比较--- 小心越界 byYJY
+		unsigned int size = nAxisPhaseTotal[i].timeIndex.size();
+		if (10 > size)										// 如果数据小于一定量，可以直接删除
+		{
+			releaseVec<vector<int>>(&(nAxisPhaseTotal[i].timeIndex));
+			continue;
+		}
+			
+		cout << "滤波前数据量:" << size << endl;
+		// 开始滤波
+		cout << "正在滤波...";
+		vector<int>::iterator iter = nAxisPhaseTotal[i].timeIndex.begin();
+		unsigned int cursor = 0;
 
-		if ( threshold_us > timeAxisTemp )					// 数据脉宽小于阈值
+		while (iter < (nAxisPhaseTotal[i].timeIndex.end() - 2 ))
 		{
-			pVecDataArray->erase(iter, iter+1);		// vector删除的时候耗费资源很多，如果滤波时间较大，时间会很久
-			cout << ".";
+			// 转为us，方便比较--- 小心越界 byYJY
+			float timeAxisTemp = (float)((((*pTimeAxis)[nAxisPhaseTotal[i].timeIndex[cursor + 1]])
+				- ((*pTimeAxis)[nAxisPhaseTotal[i].timeIndex[cursor]])) * 1e6);	
+
+			if (threshold_us > timeAxisTemp)
+			{
+				nAxisPhaseTotal[i].timeIndex.erase(iter, iter + 2);
+//				cout << (*pTimeAxis)[nAxisPhaseTotal[i].timeIndex[cursor]] << "--";
+			}
+			else {
+				cursor++;
+			}
+
+			iter = nAxisPhaseTotal[i].timeIndex.begin() + cursor;
 		}
-		else
-		{
-			cursor += 2;			// 观察数据，按2递增
-		}
-		iter = pVecDataArray->begin() + cursor;
-	}
-	cout << endl;
-	cout << "滤波后数据量还有： " << pVecDataArray->size() << endl;
+		cout << endl;
+		cout << "滤波后数据量还有： " << nAxisPhaseTotal[i].timeIndex.size() << endl;
+		cout << endl;
+	}		
 }
-
-//void filterCoderData(vector<vector<string>> *pVecDataArray, float threshold_us)	
-//{
-//	// 删除不符合要求的元素，如字符		
-//	vector<vector<string>>::iterator cursor = pVecDataArray->begin();
-//	unsigned int iter = 0;
-//	pVecDataArray->erase(pVecDataArray->begin() + iter); // 第一行是字符，删掉
-//	cursor = pVecDataArray->begin();
-//
-//	// 开始滤波
-//	cout << "正在滤波，等待时间可能有点长...";
-//	while (cursor < (pVecDataArray->end()-2)) // iter != 20  != (pVecDataArray->end())
-//	{
-//		double str2FlTemp1, str2FlTemp2;
-//		str2FlTemp1 = atof((*pVecDataArray)[iter][0].c_str()) * 1e6;	// 要先将string转为char*,再转为us
-//		str2FlTemp2 = atof((*pVecDataArray)[iter+2][0].c_str()) * 1e6;
-//		
-//		if (str2FlTemp1 < 0 || (str2FlTemp2 - str2FlTemp1) < threshold_us)
-//		{
-//			pVecDataArray->erase(cursor, cursor+1);	// vector删除的时候耗费资源很多，如果滤波时间较大，时间会很久
-//			cout << ".";
-//		}
-//		else {
-//			iter+=2;		// 观察数据，按2递增
-//		}
-////		cout << str2FlTemp1 << endl;
-//		cursor = pVecDataArray->begin() + iter;
-//	}
-//
-//	//输出结果
-//	//for (size_t i = 0; i<(*pVecDataArray).size(); i++)
-//	//{
-//	//	for (size_t j = 0; j<(*pVecDataArray)[i].size(); j++)
-//	//		cout << (*pVecDataArray)[i][j] << "----";
-//	//	cout << endl;
-//	//}
-//}
 
 // 获得编码器输出在指定位置的值
 unsigned char getCoderDataOfNAxis(vector<vector<string>> *pVecDataArray, unsigned int iPos)
