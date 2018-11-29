@@ -17,6 +17,9 @@ string readTxt(const string file);
 void readCSV(const string file, vector<vector<string>> *pVecDataArray);
 void writeCSV(const string file,const vector<vector<string>> *pVecDataArray);
 void writeCSV(const string file, vector<vector<DataSeted>> *pVecDataArray, unsigned int dataNum);
+void writeCSV(const string file, CoderData *pCoderData,						// 单组写入
+	unsigned int channel, unsigned int frame);
+
 void makeDataGroups(const string data, DataGroups * dataGroups, unsigned int dataNum);
 void display1(vector<vector<DataSeted>> *pDataSeted, unsigned int dataNum);		// 显示用
 void display2(CoderData *pCoderData, unsigned int length);		// 显示用
@@ -45,7 +48,7 @@ void filterCoderData(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[], flo
 
 // 对编码器数据进行分组
 void makeCoderData2Group(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[], 
-	CoderData *pCoderDataGrouped);
+	vector<CoderData2Digital> *pCoderData2Digital, CoderData *pCoderDataGrouped);
 
 int main()
 {
@@ -59,7 +62,7 @@ int main()
 		
 
 	string sDataFile;
-	sDataFile = readTxt(testFile);
+	sDataFile = readTxt(file);
 //	int dataNum = sDataFile.size(); 
 	unsigned int dataNum = sDataFile.size() % 270;	// 数据必须为270的倍数
 	if (0 != dataNum)		// 判断数据是否越界
@@ -91,12 +94,10 @@ int main()
 	}
 	delete[] dataGroups;							// 没用了，释放掉
 
-
-	writeCSV(file, &dataSeted, dataNum);			// 将设定的参数写入CSV文件
+//	writeCSV(file, &dataSeted, dataNum);			// 将设定的参数写入CSV文件
 
 //	display1(&dataSeted, dataNum);
 	cout << endl;
-
 
 	cout << "/////////////////////////////////////////////////////////////////" << endl << endl;;
 	cout << "实测部分：" << endl;
@@ -115,18 +116,27 @@ int main()
 	vector<float> timeAxis;		// 时间轴的数据
 	NAxisPhase nAxisPhaseTotal[6];	//  存放各轴的数据
 	getDataOfNaxisTotal(&coderData2Digital, &timeAxis, nAxisPhaseTotal);
-	releaseVec<vector<CoderData2Digital>>(&coderData2Digital);	// 释放 coderData2Digital 的空间
 
 	// 各轴滤波
-	filterCoderData(&timeAxis, nAxisPhaseTotal, (float)PULES_WIDTH_THRESHOLD);
+	filterCoderData(&timeAxis, nAxisPhaseTotal, (float)PULES_WIDTH_THRESHOLD);	
 
 	// 对数据进行分组
 	CoderData coderData;		// 数据分组
-	makeCoderData2Group(&timeAxis, nAxisPhaseTotal, &coderData);
+	makeCoderData2Group(&timeAxis, nAxisPhaseTotal, &coderData2Digital, &coderData);
 	releaseVec<vector<float>>(&timeAxis);
+	releaseVec<vector<CoderData2Digital>>(&coderData2Digital);	// 释放 coderData2Digital 的空间
 	// 释放 nAxisPhaseTotal 的内存，  还没写
-	display2(&coderData, 6);
-		
+//	display2(&coderData, 6);
+	
+	// 数据写入CSV文件观察
+//	writeCSV(fileCSV_Test, &coderData, 0, 0);		// 0通道0帧输出看看
+
+	// 数据比较，主要是 dataSeted 和 coderData 的比较， 先看距离
+	string pStrTemp;
+	compareSetedCoder(&dataSeted, &coderData, 0, 0, &pStrTemp);		// X轴0通道
+	writeCSV(fileCSV_Test, &pStrTemp);
+
+
 
 
 
@@ -147,16 +157,16 @@ void display2(CoderData *pCoderData, unsigned int length)
 		{
 			continue;
 		}
-		cout << "第" << i + 1 << "轴数据：" << endl;		
+		cout << "第" << i << "通道数据：" << endl;		
 		for (size_t j = 0; j < size; j++)
 		{
 			unsigned int sizeVec = (*pCoderData).nAxisValue[i][j].timeIndex.size();
-			cout << "第" << j << "组数据" << endl;
+			cout << "第" << j + 1 << "帧数据： start = " << (int)(*pCoderData).nAxisValue[i][j].start << endl;
 			for (size_t k = 0; k < sizeVec; k++)
 			{
 				cout << (*pCoderData).timeAxis[(*pCoderData).nAxisValue[i][j].timeIndex[k]] << "--";
 			}
-			cout << endl;
+			cout << endl << endl;
 		}
 	}
 }
@@ -179,7 +189,7 @@ void getDataOfNaxisTotal(vector<CoderData2Digital> *pCoderData2Digital,
 	for (size_t i = 0; i < 6; i++)			// 2相3轴，6个数据
 	{
 		pAxisPhaseTotal[i].start = getBinValue((*pCoderData2Digital)[0].nAxisValue, (6 - i));
-	}		
+	}	
 
 	for (size_t i = 1; i < size; i++)
 	{
@@ -193,8 +203,9 @@ void getDataOfNaxisTotal(vector<CoderData2Digital> *pCoderData2Digital,
 			{
 				pAxisPhaseTotal[j].timeIndex.push_back(i);
 			}
-		}		
+		}
 	}
+	cout << endl;
 }
 
 // 手动对vector进行赋值,目标容器会先被释放内存
@@ -217,11 +228,10 @@ void assignVec(vector<int> *pDest, vector<int> *pSrc, unsigned int start, unsign
 
 // 对编码器数据进行分组
 void makeCoderData2Group(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[], 
-	CoderData *pCoderDataGrouped)
+	vector<CoderData2Digital> *pCoderData2Digital, CoderData *pCoderDataGrouped)
 {
 	cout << "开始分组：" << endl;
 	pCoderDataGrouped->setTimeAxis(pTimeAxis);
-	unsigned int sizeOfTime = (*pCoderDataGrouped).timeAxis.size();
 	
 	for (size_t i = 0; i < 6; i++)		// 2相3轴 
 	{
@@ -234,7 +244,7 @@ void makeCoderData2Group(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[],
 		cout << "第" << i + 1 << "轴数据的原始尺寸为：" << size << endl;
 
 		unsigned int iDataNum = 0;
-		unsigned int cursor = 0;
+		unsigned int length = 0;
 		NAxisPhase nAxisPhaseTemp;
 		for (size_t j = 0; j < size-1; j++)
 		{
@@ -244,43 +254,41 @@ void makeCoderData2Group(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[],
 			if (GROUPED_TIME < timeAxisTemp)
 			{
 				// 先判断长度是否合适
-				cursor = nAxisPhaseTemp.timeIndex.size();
-				if (5 > cursor)		// 数据太少不记入
+				length = nAxisPhaseTemp.timeIndex.size();
+				if (5 > length)		// 数据太少不记入
 				{
 					cout << "第" << iDataNum+1 << "组的数据太少，请检查！" << endl;
 					releaseVec(&(nAxisPhaseTemp.timeIndex));	// 释放掉
 //					iDataNum++;
 					continue;
-				}			
+				}	
 
-				if ((cursor % 2) == 0)			// 偶数，start相等
-					nAxisPhaseTemp.start = nAxisPhaseTotal[i].start;
-				else
-					nAxisPhaseTemp.start = ~nAxisPhaseTotal[i].start;
+				// start 值确定
+				unsigned int index = nAxisPhaseTotal[i].timeIndex[j + 1 - length];
+				nAxisPhaseTemp.start = getBinValue((*pCoderData2Digital)[index].nAxisValue, (6-i));
+
 				// 压入容器
 				(*pCoderDataGrouped).nAxisValue[i].push_back(nAxisPhaseTemp);
 				releaseVec(&(nAxisPhaseTemp.timeIndex));
 
 				iDataNum++;
 			}
-
 		}
 
 		// 最后一组数据写入
+		nAxisPhaseTemp.timeIndex.push_back(nAxisPhaseTotal[i].timeIndex[size-1]);
 		// 先判断长度是否合适
-		cursor = nAxisPhaseTemp.timeIndex.size();
-		if (5 > cursor)		// 数据太少不记入
+		length = nAxisPhaseTemp.timeIndex.size();
+		if (5 > length)		// 数据太少不记入
 		{
 			cout << "第" << iDataNum + 1 << "组的数据太少，请检查！" << endl;
 			releaseVec(&(nAxisPhaseTemp.timeIndex));	// 释放掉
 			//iDataNum++;
 			continue;
 		}
-
-		if ((cursor % 2) == 0)			// 偶数，start相等
-			nAxisPhaseTemp.start = nAxisPhaseTotal[i].start;
-		else
-			nAxisPhaseTemp.start = ~nAxisPhaseTotal[i].start;
+		// start 值确定
+		unsigned int index = nAxisPhaseTotal[i].timeIndex[size - length];
+		nAxisPhaseTemp.start = getBinValue((*pCoderData2Digital)[index].nAxisValue, (6 - i));
 		// 压入容器
 		(*pCoderDataGrouped).nAxisValue[i].push_back(nAxisPhaseTemp);
 		releaseVec(&(nAxisPhaseTemp.timeIndex));
@@ -542,7 +550,9 @@ string dataProc2outFile(vector<vector<DataSeted>> *pVecDataArray, unsigned int i
 void writeCSV(const string file, vector<vector<DataSeted>> *pVecDataArray, unsigned int dataNum)
 {
 	//  文件名构造
+	// H:\\work\\projects\\VS\\Coder\\coder\\resouce\\DataSeted.txt
 	string fileName = file.substr(0, (file.size() - 4));
+	fileName.insert(fileName.find_last_of("\\"), "\\output");
 	fileName += "_proc.csv";
 	ofstream outFile;
 	outFile.open(fileName, ios::out);
@@ -638,6 +648,35 @@ void writeCSV(const string file, const vector<vector<string>> *pVecDataArray)
 	outFile.close();
 }
 
+void writeCSV(const string file, const CoderData *pCoderData, unsigned int black)	// 总的写入	
+{
+
+}
+
+void writeCSV(const string file, CoderData *pCoderData,						// 单组写入
+	unsigned int channel, unsigned int frame)
+{
+	//  文件名构造
+	string fileName = file.substr(0, (file.size() - 4));
+	fileName.insert(fileName.find_last_of("\\"), "\\output");
+	fileName += "_c" + to_string(channel) + "_f" + to_string(frame+1) + ".csv";
+	ofstream outFile;
+	outFile.open(fileName, ios::out);
+	assert(outFile.is_open());		// 打开失败
+
+	outFile << "Time" << "," << ("_c" + to_string(channel) + "_f" + to_string(frame+1)) << endl;
+	NAxisPhase nAxisPhase = (*pCoderData).nAxisValue[channel][frame];
+	unsigned int length = nAxisPhase.timeIndex.size();
+
+	for (size_t i = 0; i < length; i++)
+	{
+		unsigned int index = nAxisPhase.timeIndex[i];
+		float rsTemp = (*pCoderData).getCoderRS(channel, frame, i);
+		outFile << (*pCoderData).timeAxis[index] << "," << rsTemp << endl;	// byYJY
+	}
+	outFile.close();
+}
+
 // 对读取的数据进行分组
 void makeDataGroups(const string data, DataGroups * dataGroups, unsigned int dataNum)
 {
@@ -698,7 +737,6 @@ void filterCoderData(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[], flo
 			if (threshold_us > timeAxisTemp)
 			{
 				nAxisPhaseTotal[i].timeIndex.erase(iter, iter + 2);
-//				cout << (*pTimeAxis)[nAxisPhaseTotal[i].timeIndex[cursor]] << "--";
 			}
 			else {
 				cursor++;
