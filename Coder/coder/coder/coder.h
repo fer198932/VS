@@ -12,6 +12,7 @@ using namespace std;
 #define DUTY_RATIO_THRESHOLD 0.05		// 占空比阈值，小于该值的考虑丢掉
 #define PULES_WIDTH_THRESHOLD 25		// 脉冲宽度，单位us，小于该宽度的认为是噪声。已知100kHz时，噪声基本上为10us
 #define GROUPED_TIME 1					// 分组的判断参数，单位为秒
+#define ADD_SUB_TIME 400				// 加减速子步的时间，默认是40ms，计数器为40×10=400
 
 bool str_to_hex(const char *string, unsigned int* result, unsigned int len);
 void str2strTemp(const char *data, char* dataTemp, unsigned char cursor);
@@ -58,7 +59,8 @@ public:
 	bool checkSetedData(void);					// 检查数据是否满足规定格式				
 	friend DataSeted* getMaxSetedData			// 获得最大的设定参数，以此参数为基准进行计算拐点等参数
 		(DataSeted* setedData1, DataSeted* setedData2, DataSeted* setedData3);
-	friend unsigned int getSetedAxisNum(vector<vector<DataSeted>> *pDataSeted, unsigned int nAxis);
+	friend unsigned int getSetedAxisNum(vector<vector<DataSeted>> *pDataSeted, 
+		unsigned int nAxis, vector<int> *pIndex);
 };
 
 DataSeted::DataSeted()
@@ -145,8 +147,8 @@ float DataSeted::setedClk2RS(unsigned int num)
 float DataSeted::plusNum2Angle()					//  将设定的脉冲转换为转过的角度
 {
 	float angle;
-	// 暂时让它直接等于脉冲数
-	angle = (float)nAxisPlusNum;
+	// 计算走过的距离，量程为4mm
+	angle = (float)(4.0 * nAxisPlusNum * 1.8 / (360.0 * 8.0));
 
 	return angle;
 }
@@ -162,7 +164,7 @@ float DataSeted::calSubLastTime(void)
 {
 	float lastTime;
 
-	lastTime = (float)(((float)subLastTime / 0xffff) * SETED_DATA_PER_TIME);
+	lastTime = (float)(((float)subLastTime / ADD_SUB_TIME) * SETED_DATA_PER_TIME);
 
 	return lastTime;
 }
@@ -325,6 +327,8 @@ public:
 
 	friend void compareSetedCoder(vector<vector<DataSeted>> *pDataSeted,
 		CoderData *pCoderData, unsigned int nAxis, unsigned int channel, string *str);
+	friend void compareSetedCoder(vector<vector<DataSeted>> *pDataSeted, CoderData *pCoderData,
+		unsigned int nAxis, unsigned int channel1, unsigned int channel2, string *str);		// 2倍频
 private:
 	vector<float> timeAxis;		// 时间轴的数据
 	vector<NAxisPhase> nAxisValue[6];		// X、Y、Z轴A、B相
@@ -396,26 +400,33 @@ float CoderData::getCoderRS(unsigned int channel,
 }
 
 // 获得设定数据的某一轴运动的帧数
-unsigned int getSetedAxisNum(vector<vector<DataSeted>> *pDataSeted, unsigned int nAxis)
+unsigned int getSetedAxisNum(vector<vector<DataSeted>> *pDataSeted, unsigned int nAxis, vector<int> *pIndex)
 {
 	unsigned int num = 0;
 	unsigned int size = (*pDataSeted)[nAxis].size();
 	unsigned int plusNum, clk;
+
+	releaseVec(pIndex);		// 清空一下
+
 	for (size_t i = 0; i < size; i++)
 	{
 		plusNum = (*pDataSeted)[nAxis][i].nAxisPlusNum;
 		clk = (*pDataSeted)[nAxis][i].nAxisClk;
-		if ((0 != plusNum) && (0 != clk) )
+		if ((0 != plusNum) && (0 != clk))
+		{
 			num++;
+			pIndex->push_back(i);
+		}			
 	}
 	return num;
 }
 
-// 两组数据对比的函数，计算它们的运动角度
+// 两组数据对比的函数，计算它们的运动距离，单位mm
 void compareSetedCoder(vector<vector<DataSeted>> *pDataSeted, 
 	CoderData *pCoderData, unsigned int nAxis, unsigned int channel, string *str)
 {
-	unsigned int sizeSeted = getSetedAxisNum(pDataSeted, nAxis);
+	vector<int> indexSeted;		// 用来存放有数据的轴的索引
+	unsigned int sizeSeted = getSetedAxisNum(pDataSeted, nAxis, &indexSeted);
 	unsigned int sizeCoder = (*pCoderData).nAxisValue[channel].size();
 
 	if ( !(((0 == nAxis) || (1 == nAxis) || (2 == nAxis)) && ((0 == channel) || 
@@ -433,16 +444,66 @@ void compareSetedCoder(vector<vector<DataSeted>> *pDataSeted,
 		return;
 	}
 
-	*str = "帧数,设定的值,实测的值,(单位：转)\n";
+	*str = "帧数,设定的值,实测的值,(单位：mm)\n";
 	for (size_t i = 0; i < sizeSeted; i++)
 	{
 		*str += "第" + to_string(i + 1) + "组,";
 
-		float temp = (*pDataSeted)[nAxis][i].plusNum2Angle();
+		unsigned int index = indexSeted[i];
+		float temp = (*pDataSeted)[nAxis][index].plusNum2Angle();
 		*str += to_string(temp) + ",";
 
 		unsigned int coderPlusNum = (*pCoderData).nAxisValue[channel][i].timeIndex.size();	// 实测脉冲数
-		temp = (float)(coderPlusNum / 600.0);
+		temp = (float)(4.0 * coderPlusNum / 600.0 / 2.0);			// 量程为4mm
+		*str += to_string(temp) + "\n";
+	}
+	cout << "有" << sizeSeted << "组数据完成了对比，请查看！" << endl << endl;
+}
+
+void compareSetedCoder(vector<vector<DataSeted>> *pDataSeted, CoderData *pCoderData, 
+	unsigned int nAxis, unsigned int channel1, unsigned int channel2, string *str)	// 2倍频
+{
+	vector<int> indexSeted;		// 用来存放有数据的轴的索引
+	unsigned int sizeSeted = getSetedAxisNum(pDataSeted, nAxis, &indexSeted);
+	unsigned int sizeCoder1 = (*pCoderData).nAxisValue[channel1].size();		// 第一个通道
+	unsigned int sizeCoder2 = (*pCoderData).nAxisValue[channel2].size();		// 第2个通道
+
+	if (!(((0 == nAxis) || (1 == nAxis) || (2 == nAxis)) && 
+		((0 == channel1) || (1 == channel1) || (2 == channel1) || 
+			(3 == channel1) || (4 == channel1) || (5 == channel1)) && 
+		((0 == channel2) || (1 == channel2) || (2 == channel2) || (3 == channel2) || 
+			(4 == channel2) || (5 == channel2))))
+	{
+		*str = "输入参数有误，请检查对比函数！";
+		cout << *str << endl;
+		return;
+	}
+
+	if ( (sizeSeted != sizeCoder1) || (sizeSeted != sizeCoder2) || (sizeCoder1 != sizeCoder2))
+	{
+		*str = "设定参数与实测的帧数不吻合，请检查数据！";
+		cout << *str << endl;
+		return;
+	}
+
+	*str = "帧数,设定的值,通道一,通道二,2倍频,(单位：mm)\n";
+	for (size_t i = 0; i < sizeSeted; i++)
+	{
+		*str += "第" + to_string(i + 1) + "组,";
+
+		unsigned int index = indexSeted[i];
+		float temp = (*pDataSeted)[nAxis][index].plusNum2Angle();
+		*str += to_string(temp) + ",";
+
+		unsigned int coderPlusNum1 = (*pCoderData).nAxisValue[channel1][i].timeIndex.size();	// 实测脉冲数
+		temp = (float)(4.0 * coderPlusNum1 / 600.0 / 2.0);			// 量程为4mm
+		*str += to_string(temp) + ",";
+
+		unsigned int coderPlusNum2 = (*pCoderData).nAxisValue[channel2][i].timeIndex.size();	// 实测脉冲数
+		temp = (float)(4.0 * coderPlusNum2 / 600.0 / 2.0);			// 量程为4mm
+		*str += to_string(temp) + ",";
+
+		temp = (float)( 4.0 * (coderPlusNum1 + coderPlusNum2) / 1200.0 / 2.0 );					// 2倍频
 		*str += to_string(temp) + "\n";
 	}
 	cout << "有" << sizeSeted << "组数据完成了对比，请查看！" << endl << endl;

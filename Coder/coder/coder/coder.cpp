@@ -94,7 +94,7 @@ int main()
 	}
 	delete[] dataGroups;							// 没用了，释放掉
 
-//	writeCSV(file, &dataSeted, dataNum);			// 将设定的参数写入CSV文件
+	writeCSV(file, &dataSeted, dataNum);			// 将设定的参数写入CSV文件
 
 //	display1(&dataSeted, dataNum);
 	cout << endl;
@@ -129,11 +129,11 @@ int main()
 //	display2(&coderData, 6);
 	
 	// 数据写入CSV文件观察
-//	writeCSV(fileCSV_Test, &coderData, 0, 0);		// 0通道0帧输出看看
+	writeCSV(fileCSV_Test, &coderData, 0, 1);		// 0通道0帧输出看看
 
 	// 数据比较，主要是 dataSeted 和 coderData 的比较， 先看距离
 	string pStrTemp;
-	compareSetedCoder(&dataSeted, &coderData, 0, 0, &pStrTemp);		// X轴0通道
+	compareSetedCoder(&dataSeted, &coderData, 1, 0, 1, &pStrTemp);		// X轴0通道
 	writeCSV(fileCSV_Test, &pStrTemp);
 
 
