@@ -13,6 +13,12 @@ using namespace std;
 #define PULES_WIDTH_THRESHOLD 25		// 脉冲宽度，单位us，小于该宽度的认为是噪声。已知100kHz时，噪声基本上为10us
 #define GROUPED_TIME 1					// 分组的判断参数，单位为秒
 #define ADD_SUB_TIME 400				// 加减速子步的时间，默认是40ms，计数器为40×10=400
+#define FINE_FRACTION 8					// 细分数
+#define STEP_ANGLE 1.8					// 步距角，单位为度（°）
+#define LEAD 4.0						// 导程，单位mm
+#define	ANGLE_PER_RO 360				// 每转的角度
+#define PULSE_PER_RO_CODER 600			//  编码器每转一周，发出的脉冲数
+#define SECOND_PER_MINUTE 60			// 每分钟多少秒
 
 bool str_to_hex(const char *string, unsigned int* result, unsigned int len);
 void str2strTemp(const char *data, char* dataTemp, unsigned char cursor);
@@ -147,8 +153,8 @@ float DataSeted::setedClk2RS(unsigned int num)
 float DataSeted::plusNum2Angle()					//  将设定的脉冲转换为转过的角度
 {
 	float angle;
-	// 计算走过的距离，量程为4mm
-	angle = (float)(4.0 * nAxisPlusNum * 1.8 / (360.0 * 8.0));
+	// 计算走过的距离
+	angle = (float)( (LEAD * nAxisPlusNum * STEP_ANGLE) / (ANGLE_PER_RO * FINE_FRACTION));
 
 	return angle;
 }
@@ -324,6 +330,13 @@ public:
 		unsigned int channel, unsigned int frame);
 	// 获得转速
 	float getCoderRS(unsigned int channel, unsigned int frame, unsigned int time);
+	// 获得运动方向 0：不确定， 1：正向， 2：负向
+	unsigned char getCoderDir(unsigned int channel, unsigned int frame);
+	// 获得运动方向 0：不确定， 1：正向， 2：负向， num:要大于3，小于255，表示将容器分成几段，iNum:第几段，不为0
+	unsigned char getCoderDirPerSection(unsigned int channel, unsigned int frame,
+		unsigned char num, unsigned char iNum);
+	// 获得指定位置的0、1值
+	unsigned char getCoderValue(unsigned int channel, unsigned int frame, unsigned int iPos);
 
 	friend void compareSetedCoder(vector<vector<DataSeted>> *pDataSeted,
 		CoderData *pCoderData, unsigned int nAxis, unsigned int channel, string *str);
@@ -354,7 +367,7 @@ void CoderData::setTimeAxis(vector<float> *pTimeAxis)
 }
 
 // 计算编码器的转速
-// 计算公式为 rs = 60/(600*T) ；	T : 编码器脉冲周期
+// 计算公式为 rs = 60/(600*T) 单位(r/min)；	T : 编码器脉冲周期
 float CoderData::getCoderRS(unsigned int channel,
 	unsigned int frame, unsigned int time)
 {
@@ -376,7 +389,7 @@ float CoderData::getCoderRS(unsigned int channel,
 		indexNext = (*this).nAxisValue[channel][frame].timeIndex[time+1];
 		timeNext = this->timeAxis[indexNext];
 		t = timeNext - timeCur;
-		rs = (float)(1.0 / ( 10.0 * 2.0 * t));
+		rs = (float)(SECOND_PER_MINUTE / (PULSE_PER_RO_CODER * 2.0 * t));
 		return rs;
 	}
 	if ( (length-1) == time)
@@ -384,7 +397,7 @@ float CoderData::getCoderRS(unsigned int channel,
 		indexPre = (*this).nAxisValue[channel][frame].timeIndex[time - 1];
 		timePre = this->timeAxis[indexPre];
 		t = timeCur - timePre;
-		rs = (float)(1.0 / (10.0 * 2.0 * t));
+		rs = (float)(SECOND_PER_MINUTE / (PULSE_PER_RO_CODER * 2.0 * t));
 		return rs;
 	}
 
@@ -394,9 +407,102 @@ float CoderData::getCoderRS(unsigned int channel,
 	timePre = this->timeAxis[indexPre];
 
 	t = timeNext - timePre;
-	rs = (float)(1.0 / (10.0 * t));
+	rs = (float)(SECOND_PER_MINUTE / (PULSE_PER_RO_CODER * t));
 
 	return rs;
+}
+
+// 获得运动方向 0：不确定， 1：正向， 2：负向， num:要大于3，小于255，表示将容器分成几段，iNum:第几段，不为0
+unsigned char CoderData::getCoderDirPerSection(unsigned int channel, unsigned int frame, 
+	unsigned char num, unsigned char iNum)
+{
+	unsigned char dir;		// 方向
+	if ( (num <= iNum) || (iNum == 0) )
+	{
+		cout << "方向判断的分段参数有误，请检查！" << endl;
+		return 3;
+	}
+
+	unsigned int chan = (channel / 2) * 2;		// 选择A相通道作为基准
+	unsigned int iPos1 = iNum * ((*this).nAxisValue[chan][frame].timeIndex.size() / num);
+
+	// 是否是上升沿，需要在A相上升沿判断
+	if (0 == (*this).getCoderValue(chan, frame, iPos1) )
+		iPos1++;
+	// 得到A相数据在iPos1位置的时间轴索引值
+	unsigned int timeIndex1 = (*this).nAxisValue[chan][frame].timeIndex[iPos1];
+	// 得到B相数据在iPos1后一个位置的时间轴索引值
+	unsigned int timeIndex2;
+	unsigned int iPos2 = 0;
+	for (size_t i = 0; i < (*this).nAxisValue[chan + 1][frame].timeIndex.size(); i++)
+	{
+		timeIndex2 = (*this).nAxisValue[chan + 1][frame].timeIndex[i];
+		if (timeIndex2 > timeIndex1)
+			break;
+		iPos2++;
+	}
+
+	// 判断B相的值，确定方向
+	if ( (*this).getCoderValue(chan+1, frame, iPos2) )
+	{
+		dir = 2;
+	}
+	else
+	{
+		dir = 1;
+	}
+
+	return dir;
+}
+
+// 获得运动方向 0：不确定， 1：正向， 2：负向
+unsigned char CoderData::getCoderDir(unsigned int channel, unsigned int frame)
+{
+	unsigned char dir = 0;
+
+	// 参数设定
+	unsigned char num = 10;			// 分为10段
+	unsigned char skip = 2;			// 允许跳过的错误值，该值需小于num
+
+	// 方向初始值
+	dir = getCoderDirPerSection(channel, frame, num, 1);
+	for (size_t i = 2; i < num; i++)
+	{
+		unsigned char dirTemp = getCoderDirPerSection(channel, frame, num, (unsigned char)i);
+		if (dirTemp != dir)
+		{
+			if (!(skip))
+			{
+				cout << "方向有误，请检查！" << endl;
+				return 0;
+			}
+			skip--;
+		}
+	}
+
+	return dir;
+}
+
+// 获得指定位置的0、1值， iPos为分组完成后的位置处的值
+unsigned char CoderData::getCoderValue(unsigned int channel, unsigned int frame, unsigned int iPos)
+{
+	unsigned char value;
+
+	if (iPos >= (*this).nAxisValue[channel][frame].timeIndex.size())
+	{
+		cout << "超出长度，请检查数据" << endl;
+		return 0;
+	}
+
+	if ( iPos % 2 )
+	{
+		value = (*this).nAxisValue[channel][frame].start;
+	}
+	else {
+		value = (~((*this).nAxisValue[channel][frame].start)) & 0b1;
+	}
+
+	return value;
 }
 
 // 获得设定数据的某一轴运动的帧数
@@ -454,7 +560,7 @@ void compareSetedCoder(vector<vector<DataSeted>> *pDataSeted,
 		*str += to_string(temp) + ",";
 
 		unsigned int coderPlusNum = (*pCoderData).nAxisValue[channel][i].timeIndex.size();	// 实测脉冲数
-		temp = (float)(4.0 * coderPlusNum / 600.0 / 2.0);			// 量程为4mm
+		temp = (float)(LEAD * coderPlusNum / PULSE_PER_RO_CODER / 2.0);			// 量程为4mm
 		*str += to_string(temp) + "\n";
 	}
 	cout << "有" << sizeSeted << "组数据完成了对比，请查看！" << endl << endl;
@@ -496,15 +602,38 @@ void compareSetedCoder(vector<vector<DataSeted>> *pDataSeted, CoderData *pCoderD
 		*str += to_string(temp) + ",";
 
 		unsigned int coderPlusNum1 = (*pCoderData).nAxisValue[channel1][i].timeIndex.size();	// 实测脉冲数
-		temp = (float)(4.0 * coderPlusNum1 / 600.0 / 2.0);			// 量程为4mm
+		temp = (float)(LEAD * coderPlusNum1 / PULSE_PER_RO_CODER / 2.0);			// 两个vector值表示一个脉冲
 		*str += to_string(temp) + ",";
 
 		unsigned int coderPlusNum2 = (*pCoderData).nAxisValue[channel2][i].timeIndex.size();	// 实测脉冲数
-		temp = (float)(4.0 * coderPlusNum2 / 600.0 / 2.0);			// 量程为4mm
+		temp = (float)(LEAD * coderPlusNum2 / PULSE_PER_RO_CODER / 2.0);			// 两个vector值表示一个脉冲
 		*str += to_string(temp) + ",";
 
-		temp = (float)( 4.0 * (coderPlusNum1 + coderPlusNum2) / 1200.0 / 2.0 );					// 2倍频
-		*str += to_string(temp) + "\n";
+		temp = (float)(LEAD * (coderPlusNum1 + coderPlusNum2) / (PULSE_PER_RO_CODER * 2) / 2.0 );	// 2倍频
+		*str += to_string(temp) + ",";
+
+		// 方向
+		unsigned char dir = (*pCoderData).getCoderDir(channel1, i);
+		if (dir == 0)
+		{
+			*str += "方向有误";
+			*str += "\n";
+		}
+		else if (dir == 1)
+		{
+			*str += "+";
+			*str += "\n";
+		}
+		else if (dir == 2)
+		{
+			*str += "-";
+			*str += "\n";
+		}
+		else
+		{
+			*str += "方向数据有误，请检查！";
+			*str += "\n";
+		}
 	}
 	cout << "有" << sizeSeted << "组数据完成了对比，请查看！" << endl << endl;
 }

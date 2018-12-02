@@ -52,8 +52,10 @@ void makeCoderData2Group(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[],
 
 int main()
 {
-	const string testFile = "H:\\work\\projects\\STM32\\OIMRobot-400F407-3_20181119_Coder_Young\\Feedback_information.txt";
-	const string file = "H:\\work\\projects\\VS\\Coder\\coder\\resouce\\DataSeted.txt";		// 设定参数
+	const string testFile = 
+		"H:\\work\\projects\\STM32\\OIMRobot-400F407-3_20181119_Coder_Young\\Feedback_information.txt";
+//	const string file = "H:\\work\\projects\\VS\\Coder\\coder\\resouce\\DataSeted.txt";				// 设定参数
+	const string file = "H:\\work\\projects\\VS\\Coder\\coder\\resouce\\Feedback_information.txt";	// 设定参数
 	// 实测数据路径
 	const string fileCSV_Test = "H:\\work\\projects\\VS\\Coder\\coder\\resouce\\Time_RS.csv";
 	const string fileCSV[3] = { "H:\\work\\projects\\VS\\Coder\\coder\\resouce\\Time_RS_X.csv",
@@ -659,12 +661,12 @@ void writeCSV(const string file, CoderData *pCoderData,						// 单组写入
 	//  文件名构造
 	string fileName = file.substr(0, (file.size() - 4));
 	fileName.insert(fileName.find_last_of("\\"), "\\output");
-	fileName += "_c" + to_string(channel) + "_f" + to_string(frame+1) + ".csv";
+	fileName += "_c" + to_string(channel) + "_f" + to_string(frame) + ".csv";
 	ofstream outFile;
 	outFile.open(fileName, ios::out);
 	assert(outFile.is_open());		// 打开失败
 
-	outFile << "Time" << "," << ("_c" + to_string(channel) + "_f" + to_string(frame+1)) << endl;
+	outFile << "Time" << "," << ("_c" + to_string(channel) + "_f" + to_string(frame)) << endl;
 	NAxisPhase nAxisPhase = (*pCoderData).nAxisValue[channel][frame];
 	unsigned int length = nAxisPhase.timeIndex.size();
 
