@@ -11,14 +11,20 @@ using namespace std;
 #define SETED_DATA_PER_TIME	40e-3		// 设定值的时间轴按40ms为单位
 #define DUTY_RATIO_THRESHOLD 0.05		// 占空比阈值，小于该值的考虑丢掉
 #define PULES_WIDTH_THRESHOLD 25		// 脉冲宽度，单位us，小于该宽度的认为是噪声。已知100kHz时，噪声基本上为10us
-#define GROUPED_TIME 1					// 分组的判断参数，单位为秒
+#define GROUPED_TIME 0.5				// 分组的判断参数，单位为秒
 #define ADD_SUB_TIME 400				// 加减速子步的时间，默认是40ms，计数器为40×10=400
-#define FINE_FRACTION 8					// 细分数
+#define FINE_FRACTION 16					// 细分数
 #define STEP_ANGLE 1.8					// 步距角，单位为度（°）
 #define LEAD 4.0						// 导程，单位mm
 #define	ANGLE_PER_RO 360				// 每转的角度
 #define PULSE_PER_RO_CODER 600			//  编码器每转一周，发出的脉冲数
 #define SECOND_PER_MINUTE 60			// 每分钟多少秒
+
+// 想看哪一轴（针对设定值），哪一通道（针对编码器）、哪一帧
+#define AXIS 0				// 0：X轴，1：Y轴，2：Z轴
+#define CHANNEL1 0			// 0-5通道
+#define CHANNEL2 1			// 0-5通道
+#define FRAME 1				// 某一帧的数据，0开始，注意别超出量程
 
 bool str_to_hex(const char *string, unsigned int* result, unsigned int len);
 void str2strTemp(const char *data, char* dataTemp, unsigned char cursor);
