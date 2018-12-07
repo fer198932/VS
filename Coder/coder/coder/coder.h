@@ -24,7 +24,7 @@ using namespace std;
 #define AXIS 0				// 0：X轴，1：Y轴，2：Z轴
 #define CHANNEL1 0			// 0-5通道
 #define CHANNEL2 1			// 0-5通道
-#define FRAME 1				// 某一帧的数据，0开始，注意别超出量程
+#define FRAME 0				// 某一帧的数据，0开始，注意别超出量程
 
 bool str_to_hex(const char *string, unsigned int* result, unsigned int len);
 void str2strTemp(const char *data, char* dataTemp, unsigned char cursor);

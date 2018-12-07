@@ -134,9 +134,9 @@ int main()
 	writeCSV(fileCSV_Test, &coderData, CHANNEL1, FRAME);		// 0通道0帧输出看看
 
 	// 数据比较，主要是 dataSeted 和 coderData 的比较， 先看距离
-	string pStrTemp;
-	compareSetedCoder(&dataSeted, &coderData, AXIS, CHANNEL1, CHANNEL2, &pStrTemp);		// X轴0通道
-	writeCSV(fileCSV_Test, &pStrTemp);
+	//string pStrTemp;
+	//compareSetedCoder(&dataSeted, &coderData, AXIS, CHANNEL1, CHANNEL2, &pStrTemp);		// X轴0通道
+	//writeCSV(fileCSV_Test, &pStrTemp);
 
 
 
