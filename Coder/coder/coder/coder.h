@@ -5,26 +5,34 @@
 using namespace std;
 
 // 重要的宏定义
+#define PWM_IN							// 用来解析PWM，还是编码器
+// #define CODER_IN
+
 #define MAX_DATA_NUM 1024
 #define N_AXIS_SIZE 30					// 一个轴包括的字符数
 #define N_AXIS_SIZE_STRING 90			// 读入字符串后增加3倍
 #define SETED_DATA_PER_TIME	40e-3		// 设定值的时间轴按40ms为单位
 #define DUTY_RATIO_THRESHOLD 0.05		// 占空比阈值，小于该值的考虑丢掉
-#define PULES_WIDTH_THRESHOLD 25		// 脉冲宽度，单位us，小于该宽度的认为是噪声。已知100kHz时，噪声基本上为10us
+#define PULES_WIDTH_THRESHOLD 20		// 脉冲宽度，单位us，小于该宽度的认为是噪声。已知100kHz时，噪声基本上为10us
 #define GROUPED_TIME 0.5				// 分组的判断参数，单位为秒
 #define ADD_SUB_TIME 400				// 加减速子步的时间，默认是40ms，计数器为40×10=400
-#define FINE_FRACTION 16					// 细分数
+#define FINE_FRACTION 8					// 细分数
 #define STEP_ANGLE 1.8					// 步距角，单位为度（°）
 #define LEAD 4.0						// 导程，单位mm
 #define	ANGLE_PER_RO 360				// 每转的角度
 #define PULSE_PER_RO_CODER 600			//  编码器每转一周，发出的脉冲数
 #define SECOND_PER_MINUTE 60			// 每分钟多少秒
 
+#define TIMER_CLK 84e6					// 系统时钟，单位Hz，84MHz
+#define PSC_CLK 280						// 分段式加减速为该值，注意检查
+#define ARR_CLK 560						// 斜率式加减速为该值，二选一
+
 // 想看哪一轴（针对设定值），哪一通道（针对编码器）、哪一帧
-#define AXIS 0				// 0：X轴，1：Y轴，2：Z轴
-#define CHANNEL1 0			// 0-5通道
+#define AXIS 1				// 0：X轴，1：Y轴，2：Z轴
+#define CHANNEL1 1			// 0-5通道
 #define CHANNEL2 1			// 0-5通道
-#define FRAME 0				// 某一帧的数据，0开始，注意别超出量程
+#define FRAME 1				// 某一帧的数据，0开始，注意别超出量程
+#define CHANNEL_NUM 6		// 逻辑分析仪的输入通道数，通常不大于6
 
 bool str_to_hex(const char *string, unsigned int* result, unsigned int len);
 void str2strTemp(const char *data, char* dataTemp, unsigned char cursor);
@@ -73,7 +81,11 @@ public:
 		(DataSeted* setedData1, DataSeted* setedData2, DataSeted* setedData3);
 	friend unsigned int getSetedAxisNum(vector<vector<DataSeted>> *pDataSeted, 
 		unsigned int nAxis, vector<int> *pIndex);
+
+	int getPlusNum() { return nAxisPlusNum; }
 };
+
+vector<vector<DataSeted>> dataSeted;					// 将数据放入容器，便于动态管理大小
 
 DataSeted::DataSeted()
 {
@@ -372,6 +384,55 @@ void CoderData::setTimeAxis(vector<float> *pTimeAxis)
 	timeAxis = *pTimeAxis;
 }
 
+#ifdef PWM_IN
+// 根据PWM的输出计算电机理论上的转速
+// 计算公式 rs = (60*步距角)/(360*细分数*T)；单位(r/min)  T : 编码器脉冲周期
+float CoderData::getCoderRS(unsigned int channel,
+	unsigned int frame, unsigned int time)
+{
+	float rs = 0.0;
+	float t, timeCur, timePre, timeNext;
+	unsigned int length = (*this).nAxisValue[channel][frame].timeIndex.size();
+	if (time < 0 || time > length)
+	{
+		cout << "转速计算有误，请检查！" << endl;
+		return rs;
+	}
+
+	unsigned int indexCur = (*this).nAxisValue[channel][frame].timeIndex[time];
+	timeCur = this->timeAxis[indexCur];
+	unsigned int indexPre, indexNext;
+
+	if (0 == time)
+	{
+		indexNext = (*this).nAxisValue[channel][frame].timeIndex[time + 1];
+		timeNext = this->timeAxis[indexNext];
+		t = timeNext - timeCur;
+		rs = (float)((SECOND_PER_MINUTE * STEP_ANGLE) / (ANGLE_PER_RO * FINE_FRACTION * 2.0 * t));
+		return rs;
+	}
+	if ((length - 1) == time)
+	{
+		indexPre = (*this).nAxisValue[channel][frame].timeIndex[time - 1];
+		timePre = this->timeAxis[indexPre];
+		t = timeCur - timePre;
+		rs = (float)((SECOND_PER_MINUTE * STEP_ANGLE) / (ANGLE_PER_RO * FINE_FRACTION * 2.0 * t));
+		return rs;
+	}
+
+	indexPre = (*this).nAxisValue[channel][frame].timeIndex[time - 1];
+	indexNext = (*this).nAxisValue[channel][frame].timeIndex[time + 1];
+	timeNext = this->timeAxis[indexNext];
+	timePre = this->timeAxis[indexPre];
+
+	t = timeNext - timePre;
+	rs = (float)((SECOND_PER_MINUTE * STEP_ANGLE) / (ANGLE_PER_RO * FINE_FRACTION * t));
+
+	return rs;
+}
+#endif
+
+#ifdef CODER_IN
 // 计算编码器的转速
 // 计算公式为 rs = 60/(600*T) 单位(r/min)；	T : 编码器脉冲周期
 float CoderData::getCoderRS(unsigned int channel,
@@ -417,6 +478,7 @@ float CoderData::getCoderRS(unsigned int channel,
 
 	return rs;
 }
+#endif
 
 // 获得运动方向 0：不确定， 1：正向， 2：负向， num:要大于3，小于255，表示将容器分成几段，iNum:第几段，不为0
 unsigned char CoderData::getCoderDirPerSection(unsigned int channel, unsigned int frame, 
@@ -533,7 +595,54 @@ unsigned int getSetedAxisNum(vector<vector<DataSeted>> *pDataSeted, unsigned int
 	return num;
 }
 
-// 两组数据对比的函数，计算它们的运动距离，单位mm
+#ifdef PWM_IN
+// 两组数据对比的函数，计算它们的运动距离，单位mm  编码器专用
+void compareSetedCoder(vector<vector<DataSeted>> *pDataSeted,
+	CoderData *pCoderData, unsigned int nAxis, unsigned int channel, string *str)
+{
+	vector<int> indexSeted;		// 用来存放有数据的轴的索引
+	unsigned int sizeSeted = getSetedAxisNum(pDataSeted, nAxis, &indexSeted);
+	unsigned int sizeCoder = (*pCoderData).nAxisValue[channel].size();
+
+	if (!(((0 == nAxis) || (1 == nAxis) || (2 == nAxis)) && ((0 == channel) ||
+		(1 == channel) || (2 == channel))))
+	{
+		*str = "输入参数有误，请检查对比函数！";
+		cout << *str << endl;
+		return;
+	}
+
+	if (sizeSeted != sizeCoder)
+	{
+		*str = "设定参数与实测的帧数不吻合，请检查数据！";
+		cout << *str << endl;
+		return;
+	}
+
+	*str = "帧数,设定的值,丢失脉冲,PWM的值,(单位：mm)\n";
+	for (size_t i = 0; i < sizeSeted; i++) 
+	{
+		*str += "第" + to_string(i + 1) + "组,";
+
+		unsigned int index = indexSeted[i];
+		float temp = (*pDataSeted)[nAxis][index].plusNum2Angle();
+		*str += to_string(temp) + ",";
+
+		// 丢失的脉冲
+		unsigned int coderPlusNum = (*pCoderData).nAxisValue[channel][i].timeIndex.size();	// PWM输出脉冲数
+		temp = (float)(dataSeted[nAxis][i].getPlusNum() - (coderPlusNum / 2.0));
+		*str += to_string(temp) + ",";
+
+		// PWM的值
+		temp = (float)((LEAD * coderPlusNum / 2.0) / (ANGLE_PER_RO * FINE_FRACTION / STEP_ANGLE));	// 量程为4mm
+		*str += to_string(temp) + "\n";
+	}
+	cout << "有" << sizeSeted << "组数据完成了对比，请查看！" << endl << endl;
+}
+#endif
+
+#ifdef CODER_IN
+// 两组数据对比的函数，计算它们的运动距离，单位mm  编码器专用
 void compareSetedCoder(vector<vector<DataSeted>> *pDataSeted, 
 	CoderData *pCoderData, unsigned int nAxis, unsigned int channel, string *str)
 {
@@ -643,6 +752,8 @@ void compareSetedCoder(vector<vector<DataSeted>> *pDataSeted, CoderData *pCoderD
 	}
 	cout << "有" << sizeSeted << "组数据完成了对比，请查看！" << endl << endl;
 }
+#endif
+
 
 // 字符串写入CSV文件
 void writeCSV(const string file, string* str )

@@ -61,8 +61,8 @@ int main()
 	const string fileCSV[3] = { "H:\\work\\projects\\VS\\Coder\\coder\\resouce\\Time_RS_X.csv",
 								"H:\\work\\projects\\VS\\Coder\\coder\\resouce\\Time_RS_Y.csv",
 								"H:\\work\\projects\\VS\\Coder\\coder\\resouce\\Time_RS_Z.csv" };
-		
 
+	// 设定数据的处理 //////////////////////////////////////////////////////////
 	string sDataFile;
 	sDataFile = readTxt(file);
 //	int dataNum = sDataFile.size(); 
@@ -79,7 +79,6 @@ int main()
 	DataGroups *dataGroups = new DataGroups[dataNum];	// 注意后面要释放
 	makeDataGroups(sDataFile, dataGroups, dataNum);
 	
-	vector<vector<DataSeted>> dataSeted;					// 将数据放入容器，便于动态管理大小
 	dataSeted.resize(3, vector<DataSeted>(dataNum));		// row：x、y、z轴； col：多少组数据
 	// 赋值
 	DataSeted dataSetedTemp;							
@@ -95,12 +94,13 @@ int main()
 		dataSeted[2][i] = dataSetedTemp;
 	}
 	delete[] dataGroups;							// 没用了，释放掉
-
 	writeCSV(file, &dataSeted, dataNum);			// 将设定的参数写入CSV文件
 
 //	display1(&dataSeted, dataNum);
 	cout << endl;
 
+
+	// 输出信号的处理  ///////////////////////////////////////////////////////////////
 	cout << "/////////////////////////////////////////////////////////////////" << endl << endl;;
 	cout << "实测部分：" << endl;
 
@@ -133,10 +133,10 @@ int main()
 	// 数据写入CSV文件观察
 	writeCSV(fileCSV_Test, &coderData, CHANNEL1, FRAME);		// 0通道0帧输出看看
 
-	// 数据比较，主要是 dataSeted 和 coderData 的比较， 先看距离
-	//string pStrTemp;
-	//compareSetedCoder(&dataSeted, &coderData, AXIS, CHANNEL1, CHANNEL2, &pStrTemp);		// X轴0通道
-	//writeCSV(fileCSV_Test, &pStrTemp);
+	// 数据比较，主要是 dataSeted 和 coderData 的比较， 先看距离 ///////////////
+	string pStrTemp;
+	compareSetedCoder(&dataSeted, &coderData, AXIS, CHANNEL1, &pStrTemp);		// X轴0通道
+	writeCSV(fileCSV_Test, &pStrTemp);
 
 
 
@@ -234,8 +234,9 @@ void makeCoderData2Group(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[],
 {
 	cout << "开始分组：" << endl;
 	pCoderDataGrouped->setTimeAxis(pTimeAxis);
+
 	
-	for (size_t i = 0; i < 6; i++)		// 2相3轴 
+	for (size_t i = 0; i < CHANNEL_NUM; i++)		// 2相3轴 
 	{
 		unsigned int size = nAxisPhaseTotal[i].timeIndex.size();		
 		if (10 > size)										// 如果数据小于一定量，可以直接删除
@@ -715,7 +716,7 @@ void display1(vector<vector<DataSeted>> *pDataSeted, unsigned int dataNum)
 // 滤波不能处理最后两个数据，回头再修改 byYJY
 void filterCoderData(vector<float> *pTimeAxis, NAxisPhase nAxisPhaseTotal[], float threshold_us)
 {
-	for (size_t i = 0; i < 6; i++)	// 2相3轴
+	for (size_t i = 0; i < CHANNEL_NUM; i++)	// 2相3轴
 	{
 		unsigned int size = nAxisPhaseTotal[i].timeIndex.size();
 		if (10 > size)										// 如果数据小于一定量，可以直接删除
