@@ -29,7 +29,7 @@ using namespace std;
 
 // 想看哪一轴（针对设定值），哪一通道（针对编码器）、哪一帧
 #define AXIS 1				// 0：X轴，1：Y轴，2：Z轴
-#define CHANNEL1 2			// 0-5通道
+#define CHANNEL1 3			// 0-5通道
 #define CHANNEL2 1			// 0-5通道
 #define FRAME 1				// 某一帧的数据，0开始，注意别超出量程
 #define CHANNEL_NUM 6		// 逻辑分析仪的输入通道数，通常不大于6
