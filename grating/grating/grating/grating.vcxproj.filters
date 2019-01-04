@@ -21,12 +21,24 @@
     <ClCompile Include="LogicAnalyzerData.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="myLib.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Grating.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="main.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="LogicAnalyzerData.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="myLib.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Grating.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

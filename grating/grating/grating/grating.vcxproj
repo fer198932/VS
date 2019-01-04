@@ -119,12 +119,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Grating.cpp" />
     <ClCompile Include="LogicAnalyzerData.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="myLib.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Grating.h" />
     <ClInclude Include="LogicAnalyzerData.h" />
     <ClInclude Include="main.h" />
+    <ClInclude Include="myLib.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="ClassDiagram.cd" />

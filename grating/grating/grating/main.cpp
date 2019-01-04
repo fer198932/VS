@@ -12,7 +12,9 @@ int main()
 	start = time(nullptr);
 #endif
 
-	LogicAnalyzerData grating(fileName);
+//	LogicAnalyzerData grating(fileName);
+	Grating grating(fileName);
+	grating.setMotionData();
 
 #if _FILTERING
 	// ÂË²¨

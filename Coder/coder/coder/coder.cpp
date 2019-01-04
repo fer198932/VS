@@ -15,6 +15,14 @@ using namespace std;
 
 string readTxt(const string file);
 void readCSV(const string file, vector<vector<string>> *pVecDataArray);
+// 读取csv文件的函数，PWM脉冲数量计算用
+void readCSV(const string file, vector<PWM_Data> *pPlusNum);
+// 获得文件总行数
+unsigned int getFileLineNum(const string file);
+
+// PWM解析的数据写入CSV
+void writeCSV(const string file, vector<PWM_Data> *plusNum);
+
 void writeCSV(const string file,const vector<vector<string>> *pVecDataArray);
 void writeCSV(const string file, vector<vector<DataSeted>> *pVecDataArray, unsigned int dataNum);
 void writeCSV(const string file, CoderData *pCoderData,						// 单组写入
@@ -104,11 +112,20 @@ int main()
 	cout << "/////////////////////////////////////////////////////////////////" << endl << endl;;
 	cout << "实测部分：" << endl;
 
+	/* 
+	// CSV操作，计算PWM的脉冲数
+	cout << "PWM解析：" << endl;
+	vector<PWM_Data> plusNum;
+	readCSV(fileCSV_Test, &plusNum);
+	writeCSV(fileCSV_Test, &plusNum);
+	*/
+
 	// csv文件操作，实测部分
 	vector<vector<string>> vecDataArray;	// 保存CSV数据的结构
 	readCSV(fileCSV_Test, &vecDataArray);
 	cout << "共有数据：" << vecDataArray.size() << endl << endl;
 
+	
 	// string 转化为 digital
 	vector<CoderData2Digital> coderData2Digital;
 	makeCoderData2Digital(&vecDataArray, &coderData2Digital);
@@ -137,7 +154,6 @@ int main()
 	//string pStrTemp;
 	//compareSetedCoder(&dataSeted, &coderData, AXIS, CHANNEL1, &pStrTemp);		// X轴0通道
 	//writeCSV(fileCSV_Test, &pStrTemp);
-
 
 
 
@@ -412,6 +428,138 @@ void readCSV(const string file, vector<vector<string>> *pVecDataArray)
 	//} 
 }
 
+// 获得文件总行数
+unsigned int getFileLineNum(const string file)
+{
+	ifstream infile;
+	infile.open(file, ios::in);
+	assert(infile.is_open());		// 打开失败
+
+	string lineStr;
+	unsigned int lineTotal = 0;
+	while (getline(infile, lineStr))
+	{
+		lineTotal++;
+	}
+
+	infile.close();
+	return lineTotal;
+
+	//FILE *pFile;
+	//unsigned int plusNum = 0;
+	//const unsigned int cnt = 10000;			// 1万次输出一次进度
+	//char ch;
+	//string str;
+	//pFile = fopen(file.c_str(), "r");
+
+	//if (nullptr == pFile)
+	//{
+	//	cout << "不存在该文件！" << endl;
+	//	return;
+	//} 
+	//else
+	//{
+	//	// 读取文件行数
+	//	do
+	//	{
+	//		ch = fgetc(pFile);
+	//		
+	//		if (',' == ch)
+	//		{
+	//			cout << ".";
+	//			plusNum++;
+	//		} 
+
+	//	} while (EOF != ch);
+	//}
+}
+
+// 显示进度的函数
+// void displaySchedule()
+
+// 读取csv文件的函数，PWM脉冲数量计算用
+void readCSV(const string file, vector<PWM_Data> *pPlusNum)
+{
+	ifstream infile;
+	infile.open(file, ios::in);
+	assert(infile.is_open());		// 打开失败
+
+	// 得到总行数
+	unsigned int lineTotal = getFileLineNum(file);
+
+	string lineStr;
+	PWM_Data plusData;
+	unsigned int plusNum = 1;
+	unsigned int cnt = 0;					// 1万次输出一次进度的计时器
+	unsigned int lineCnt = 0;				// 行数计数
+	float timePre = 0.0;
+	float timeNext = -1;					// 负数作为判断条件
+
+	cout << "00%" ;
+	while (getline(infile, lineStr))
+	{
+		// 显示进度
+		lineCnt++;
+		cnt++;
+		if ((lineTotal/100) == cnt)							// 百分比显示
+		{
+			cnt = 0;
+			cout << "\b\b\b";
+			unsigned int sche = lineCnt * 100 / lineTotal;
+			if (sche < 10)
+			{
+				cout << "0" << sche << "%";
+			}
+			else
+			{
+				cout << sche << "%";
+			}				
+		}
+
+		// 数据处理
+		string strTime;
+		strTime = lineStr.substr(0, lineStr.find_first_of(","));
+		timeNext = (float)atof(strTime.c_str());
+		if (timeNext > 0.0)
+		{
+			if (timePre > 0.0)
+			{
+				if ((timeNext-timePre) < GROUPED_TIME)
+				{
+					plusNum++;
+				}
+				else
+				{
+					plusNum = (plusNum + 1) / 2;
+					plusData.plusNum = plusNum;
+					plusData.startTime = timePre;
+					(*pPlusNum).push_back(plusData);
+					plusNum = 0;
+				}
+			}
+			timePre = timeNext;
+		}
+	}
+	// 最后一步
+	plusData.startTime = timePre;
+	plusData.plusNum = (plusNum + 1) / 2;
+	(*pPlusNum).push_back(plusData);
+
+	cout << "\b\b\b" << "100%" << endl;
+
+	infile.close();
+
+	cout << "PWM数据解析OK！" << endl;
+
+	//输出结果
+	//for (size_t i = /*(*pVecDataArray).size()*/0; i<50; i++)
+	//{
+	//	for (size_t j = 0; j<(*pVecDataArray)[i].size(); j++)
+	//		cout << (*pVecDataArray)[i][j] << "  ";
+	//	cout << endl;
+	//} 
+}
+
 // 将设定参数解析为字符串进行输出 rs:第一级转速，lastTime：最后运行的时间，
 string dataProc2outFile(unsigned int &timeNum, float rs[3], float lastTime)
 {
@@ -547,6 +695,26 @@ string dataProc2outFile(vector<vector<DataSeted>> *pVecDataArray, unsigned int i
 	}
 
 	return strTemp;
+}
+
+// PWM解析的数据写入CSV
+void writeCSV(const string file, vector<PWM_Data> *plusNum)
+{
+	//  文件名构造
+	string fileName = file.substr(0, (file.size() - 4));
+	fileName.insert(fileName.find_last_of("\\"), "\\output");
+	fileName += "_PWM.csv";
+	ofstream outFile;
+	outFile.open(fileName, ios::out);
+	assert(outFile.is_open());		// 打开失败
+
+	unsigned int size = (*plusNum).size();
+	for (size_t i = 0; i < size; i++)
+	{
+		outFile << (*plusNum)[i].startTime << ", " << (*plusNum)[i].plusNum << endl;
+	}
+
+	outFile.close();
 }
 
 // 设定参数写入CSV文件
